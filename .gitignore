@@ -1,0 +1,9 @@
+target/
+spinwin.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+server/frontend/wasm/*.wasm
+server/frontend/wasm/*.js
+server/frontend/wasm/*.d.ts

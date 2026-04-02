@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFE366"/>
+      <stop offset="100%" stop-color="#FFD93D"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="200" rx="16" fill="url(#bg)"/>
+  <circle cx="70" cy="80" r="20" fill="none" stroke="#fff" stroke-width="3"/>
+  <circle cx="130" cy="80" r="20" fill="none" stroke="#fff" stroke-width="3"/>
+  <rect x="85" y="110" width="30" height="30" rx="4" fill="none" stroke="#fff" stroke-width="3"/>
+  <circle cx="100" cy="70" r="5" fill="#fff"/>
+  <text x="100" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#fff">Jewelry Set</text>
+</svg>

@@ -1,0 +1,3 @@
+[workspace]
+members = ["core", "server", "scanner-wasm"]
+resolver = "2"

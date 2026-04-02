@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spin & Win — WomenNowTV</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1a0a2e 0%, #3d1f6d 50%, #7b2d8e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            padding: 1.5rem 1rem 0.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            background: linear-gradient(to right, #f9d423, #ff4e50);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+        }
+
+        header p {
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+            margin-top: 0.3rem;
+        }
+
+        /* Wheel mode selector */
+        .mode-selector {
+            display: flex;
+            gap: 0.5rem;
+            margin: 0.75rem 0;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .mode-btn {
+            padding: 0.4rem 0.8rem;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 1rem;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+        .mode-btn.active {
+            background: rgba(249, 212, 35, 0.3);
+            border-color: #f9d423;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: min(85vw, 380px);
+            height: min(85vw, 380px);
+            margin: 0.5rem auto;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .pointer {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 18px solid transparent;
+            border-right: 18px solid transparent;
+            border-top: 36px solid #f9d423;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+            z-index: 10;
+        }
+
+        .spin-btn {
+            display: block;
+            margin: 1rem auto;
+            padding: 1rem 3rem;
+            font-size: 1.3rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 50px;
+            background: linear-gradient(to right, #f9d423, #ff4e50);
+            color: white;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            box-shadow: 0 4px 20px rgba(249, 212, 35, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .spin-btn:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 6px 30px rgba(249, 212, 35, 0.6);
+        }
+
+        .spin-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Modal overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: linear-gradient(135deg, #2d1b4e, #1a0a2e);
+            border: 1px solid rgba(249, 212, 35, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .modal h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #f9d423;
+        }
+
+        .prize-image {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 0.5rem;
+            margin: 1rem auto;
+            display: block;
+            border: 2px solid rgba(249, 212, 35, 0.4);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .modal label {
+            display: block;
+            text-align: left;
+            margin: 0.75rem 0 0.25rem;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .modal input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 1rem;
+        }
+
+        .modal input::placeholder { color: rgba(255,255,255,0.4); }
+
+        .claim-btn {
+            margin-top: 1.25rem;
+            padding: 0.8rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 50px;
+            background: linear-gradient(to right, #f9d423, #ff4e50);
+            color: white;
+            cursor: pointer;
+            width: 100%;
+        }
+        .claim-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .error-msg {
+            color: #ff6b6b;
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+        }
+
+        /* Ticket page */
+        .ticket-container {
+            display: none;
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+
+        .ticket-card {
+            background: linear-gradient(135deg, #2d1b4e, #1a0a2e);
+            border: 2px solid #f9d423;
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 380px;
+            margin: 0 auto;
+        }
+
+        .ticket-card h2 { color: #f9d423; margin-bottom: 0.5rem; }
+        .ticket-card .prize-label { font-size: 1.3rem; margin: 0.5rem 0; }
+        .ticket-card .attendee-label { color: rgba(255,255,255,0.7); }
+
+        #ticket-qr {
+            margin: 1.5rem auto;
+            background: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            display: inline-block;
+        }
+
+        .ticket-note {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.8rem;
+            margin-top: 1rem;
+        }
+
+        .confetti-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 200;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Spin & Win</h1>
+        <p>WomenNowTV Event Giveaway</p>
+    </header>
+
+    <div class="mode-selector">
+        <button class="mode-btn active" data-mode="dynamic">Dynamic Segments</button>
+        <button class="mode-btn" data-mode="equal">Equal (Weighted)</button>
+        <button class="mode-btn" data-mode="fixed">Fixed Proportional</button>
+    </div>
+
+    <div class="wheel-container">
+        <div class="pointer"></div>
+        <canvas id="wheel-canvas" width="760" height="760"></canvas>
+    </div>
+
+    <button class="spin-btn" id="spin-btn">SPIN!</button>
+
+    <!-- Claim Modal -->
+    <div class="modal-overlay" id="claim-modal">
+        <div class="modal">
+            <h2>Congratulations!</h2>
+            <p>You won: <strong id="prize-name-display"></strong></p>
+            <img id="prize-img" class="prize-image" alt="Prize" src="">
+            <p style="font-size:0.85rem; color:rgba(255,255,255,0.7);">Enter your details to claim your prize</p>
+            <label for="claim-name">Full Name</label>
+            <input type="text" id="claim-name" placeholder="Your name" autocomplete="name">
+            <label for="claim-email">Email</label>
+            <input type="email" id="claim-email" placeholder="your@email.com" autocomplete="email">
+            <div class="error-msg" id="claim-error"></div>
+            <button class="claim-btn" id="claim-btn">Claim Prize</button>
+        </div>
+    </div>
+
+    <!-- Ticket View -->
+    <div class="ticket-container" id="ticket-view">
+        <div class="ticket-card">
+            <h2>Thank You for Playing!</h2>
+            <p style="margin-bottom: 1rem; color: rgba(255,255,255,0.8);">You won a <strong id="ticket-prize" style="color: #f9d423;"></strong></p>
+            <p class="attendee-label" id="ticket-attendee"></p>
+            <div id="ticket-qr"></div>
+            <p style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-top: 1rem; line-height: 1.5;">
+                We'll also send a copy to your email.<br>
+                See you at the event!
+            </p>
+            <p class="ticket-note">Present this QR code at the event booth to collect your prize.<br>Each code is single-use and cannot be shared.</p>
+        </div>
+    </div>
+
+    <canvas class="confetti-canvas" id="confetti"></canvas>
+
+    <!-- QR code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+    <script>
+    const PRIZE_COLORS = [
+        '#FF6B6B', '#4ECDC4', '#FFD93D', '#6C5CE7', '#A8E6CF'
+    ];
+    const PRIZE_COLORS_DARK = [
+        '#cc5555', '#3ea89e', '#ccad31', '#5649b8', '#86b8a5'
+    ];
+
+    let prizes = [];
+    let currentMode = 'dynamic';
+    let spinning = false;
+    let spinResult = null;
+
+    const canvas = document.getElementById('wheel-canvas');
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = canvas.width / 2 - 20;
+
+    // Load prizes
+    async function loadPrizes() {
+        const res = await fetch('/api/prizes');
+        prizes = await res.json();
+        drawWheel(0);
+    }
+
+    function getSegments() {
+        const available = prizes.filter(p => p.remaining > 0);
+        if (available.length === 0) return [];
+
+        if (currentMode === 'equal') {
+            // Equal size segments, probability handled server-side
+            const angle = 360 / available.length;
+            return available.map((p, i) => ({
+                prize: p,
+                startAngle: i * angle,
+                sweepAngle: angle,
+            }));
+        }
+
+        if (currentMode === 'fixed') {
+            // Proportional to total_qty (never changes)
+            const totalQty = available.reduce((s, p) => s + p.total_qty, 0);
+            let start = 0;
+            return available.map(p => {
+                const sweep = (p.total_qty / totalQty) * 360;
+                const seg = { prize: p, startAngle: start, sweepAngle: sweep };
+                start += sweep;
+                return seg;
+            });
+        }
+
+        // 'dynamic' — proportional to remaining
+        const totalRemaining = available.reduce((s, p) => s + p.remaining, 0);
+        let start = 0;
+        return available.map(p => {
+            const sweep = (p.remaining / totalRemaining) * 360;
+            const seg = { prize: p, startAngle: start, sweepAngle: sweep };
+            start += sweep;
+            return seg;
+        });
+    }
+
+    function drawWheel(rotation) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const segments = getSegments();
+        if (segments.length === 0) {
+            ctx.fillStyle = '#666';
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('All prizes claimed!', centerX, centerY);
+            return;
+        }
+
+        segments.forEach((seg, i) => {
+            const startRad = (seg.startAngle + rotation - 90) * Math.PI / 180;
+            const endRad = (seg.startAngle + seg.sweepAngle + rotation - 90) * Math.PI / 180;
+            const colorIdx = prizes.findIndex(p => p.id === seg.prize.id) % PRIZE_COLORS.length;
+
+            // Draw segment
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, startRad, endRad);
+            ctx.closePath();
+            ctx.fillStyle = PRIZE_COLORS[colorIdx];
+            ctx.fill();
+            ctx.strokeStyle = '#1a0a2e';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Draw text
+            const midAngle = startRad + (endRad - startRad) / 2;
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(midAngle);
+            ctx.fillStyle = '#1a0a2e';
+            ctx.font = 'bold 22px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Position text at 60% of radius
+            const textRadius = radius * 0.6;
+            ctx.fillText(seg.prize.name, textRadius, 0);
+            ctx.restore();
+        });
+
+        // Center circle
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a0a2e';
+        ctx.fill();
+        ctx.strokeStyle = '#f9d423';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.fillStyle = '#f9d423';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('SPIN', centerX, centerY);
+    }
+
+    // Spin animation
+    function animateSpin(targetAngle, duration, callback) {
+        const startTime = performance.now();
+        const startRotation = 0;
+
+        function easeOutCubic(t) {
+            return 1 - Math.pow(1 - t, 3);
+        }
+
+        function animate(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = easeOutCubic(progress);
+            const currentAngle = startRotation + targetAngle * eased;
+
+            drawWheel(currentAngle % 360);
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                callback();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    // Confetti
+    function launchConfetti() {
+        const confettiCanvas = document.getElementById('confetti');
+        const cCtx = confettiCanvas.getContext('2d');
+        confettiCanvas.width = window.innerWidth;
+        confettiCanvas.height = window.innerHeight;
+
+        const particles = [];
+        const colors = ['#f9d423', '#ff4e50', '#4ECDC4', '#FFD93D', '#FF6B6B', '#6C5CE7'];
+
+        for (let i = 0; i < 150; i++) {
+            particles.push({
+                x: Math.random() * confettiCanvas.width,
+                y: Math.random() * confettiCanvas.height - confettiCanvas.height,
+                w: Math.random() * 10 + 5,
+                h: Math.random() * 6 + 3,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                vx: (Math.random() - 0.5) * 4,
+                vy: Math.random() * 3 + 2,
+                rot: Math.random() * 360,
+                rotV: (Math.random() - 0.5) * 10,
+            });
+        }
+
+        let frame = 0;
+        function drawConfetti() {
+            cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.rot += p.rotV;
+                p.vy += 0.05;
+
+                cCtx.save();
+                cCtx.translate(p.x, p.y);
+                cCtx.rotate(p.rot * Math.PI / 180);
+                cCtx.fillStyle = p.color;
+                cCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                cCtx.restore();
+            });
+
+            frame++;
+            if (frame < 180) requestAnimationFrame(drawConfetti);
+            else cCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+        }
+        requestAnimationFrame(drawConfetti);
+    }
+
+    // Spin button
+    document.getElementById('spin-btn').addEventListener('click', async () => {
+        if (spinning) return;
+        spinning = true;
+        document.getElementById('spin-btn').disabled = true;
+
+        try {
+            const res = await fetch('/api/spin', { method: 'POST' });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(err.error || 'Failed to spin');
+                spinning = false;
+                document.getElementById('spin-btn').disabled = false;
+                return;
+            }
+
+            spinResult = await res.json();
+
+            // The server returns an angle that already includes full rotations
+            // We negate it because the wheel rotates clockwise but our pointer is at top
+            animateSpin(spinResult.angle, 4000, () => {
+                spinning = false;
+                launchConfetti();
+                showClaimModal(spinResult.prize);
+            });
+        } catch (e) {
+            alert('Network error — please try again');
+            spinning = false;
+            document.getElementById('spin-btn').disabled = false;
+        }
+    });
+
+    // Claim modal
+    function showClaimModal(prize) {
+        document.getElementById('prize-name-display').textContent = prize.name;
+        document.getElementById('prize-img').src = `/assets/${prize.image_url}`;
+        document.getElementById('prize-img').alt = prize.name;
+        document.getElementById('claim-error').textContent = '';
+        document.getElementById('claim-modal').classList.add('active');
+    }
+
+    document.getElementById('claim-btn').addEventListener('click', async () => {
+        const name = document.getElementById('claim-name').value.trim();
+        const email = document.getElementById('claim-email').value.trim();
+        const errorEl = document.getElementById('claim-error');
+
+        if (!name || !email) {
+            errorEl.textContent = 'Please fill in both fields';
+            return;
+        }
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errorEl.textContent = 'Please enter a valid email address';
+            return;
+        }
+
+        document.getElementById('claim-btn').disabled = true;
+        errorEl.textContent = '';
+
+        try {
+            const res = await fetch('/api/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    email,
+                    prize_id: spinResult.prize.id,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                errorEl.textContent = data.error || 'Failed to claim prize';
+                document.getElementById('claim-btn').disabled = false;
+                return;
+            }
+
+            // Show ticket
+            showTicket(data);
+        } catch (e) {
+            errorEl.textContent = 'Network error — please try again';
+            document.getElementById('claim-btn').disabled = false;
+        }
+    });
+
+    function showTicket(data) {
+        document.getElementById('claim-modal').classList.remove('active');
+        document.querySelector('header').style.display = 'none';
+        document.querySelector('.mode-selector').style.display = 'none';
+        document.querySelector('.wheel-container').style.display = 'none';
+        document.getElementById('spin-btn').style.display = 'none';
+
+        document.getElementById('ticket-prize').textContent = data.prize_name;
+        document.getElementById('ticket-attendee').textContent = data.attendee_name;
+
+        const qrContainer = document.getElementById('ticket-qr');
+        qrContainer.innerHTML = '';
+
+        // Generate QR with the signed token
+        // Use toDataURL for broader compatibility, then display as an <img>
+        QRCode.toDataURL(data.qr_data, {
+            width: 250,
+            margin: 1,
+            color: { dark: '#1a0a2e', light: '#ffffff' },
+        }, (err, url) => {
+            if (err) {
+                qrContainer.textContent = 'QR code generation failed. Your ticket ID: ' + data.ticket_id;
+                console.error('QR error:', err);
+            } else {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = 'Ticket QR Code';
+                img.style.width = '250px';
+                img.style.height = '250px';
+                qrContainer.appendChild(img);
+            }
+        });
+
+        document.getElementById('ticket-view').style.display = 'block';
+    }
+
+    // Mode selector
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentMode = btn.dataset.mode;
+            drawWheel(0);
+        });
+    });
+
+    // Init
+    loadPrizes();
+    </script>
+</body>
+</html>
