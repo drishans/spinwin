@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Staff Scanner — Spin & Win</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -149,7 +150,7 @@
     async function setup() {
         // Load WASM module
         try {
-            await init('/wasm/spinwin_scanner_bg.wasm');
+            await init({ module_or_path: '/wasm/spinwin_scanner_bg.wasm' });
             wasmReady = true;
         } catch (e) {
             console.warn('WASM load failed, falling back to server verification', e);
@@ -165,16 +166,24 @@
 
         // Start camera
         try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Camera API not available. If not on HTTPS, try localhost or enable secure context.');
+            }
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
+                video: { facingMode: { ideal: 'environment' } }
             });
             const video = document.getElementById('scanner-video');
             video.srcObject = stream;
-            video.play();
+            await video.play();
             requestAnimationFrame(scanFrame);
         } catch (e) {
-            document.getElementById('status-line').textContent =
-                'Camera access denied. Please allow camera access.';
+            console.error('Camera error:', e);
+            const msg = e.name === 'NotAllowedError'
+                ? 'Camera access denied. Please allow camera access in your browser settings.'
+                : e.name === 'NotFoundError'
+                ? 'No camera found on this device.'
+                : 'Camera error: ' + e.message;
+            document.getElementById('status-line').textContent = msg;
         }
     }
 

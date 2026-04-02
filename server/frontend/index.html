@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spin & Win — WomenNowTV</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -199,6 +200,7 @@
             display: none;
             text-align: center;
             padding: 2rem 1rem;
+            width: 100%;
         }
 
         .ticket-card {
@@ -290,7 +292,7 @@
     <canvas class="confetti-canvas" id="confetti"></canvas>
 
     <!-- QR code library -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="/qrcode.min.js"></script>
 
     <script>
     const PRIZE_COLORS = [
@@ -577,39 +579,47 @@
     });
 
     function showTicket(data) {
+        console.log('showTicket called with:', data);
+
+        // Hide everything else
         document.getElementById('claim-modal').classList.remove('active');
+        document.getElementById('claim-modal').style.display = 'none';
         document.querySelector('header').style.display = 'none';
         document.querySelector('.mode-selector').style.display = 'none';
         document.querySelector('.wheel-container').style.display = 'none';
         document.getElementById('spin-btn').style.display = 'none';
+        document.getElementById('confetti').style.display = 'none';
 
+        // Populate ticket content
         document.getElementById('ticket-prize').textContent = data.prize_name;
         document.getElementById('ticket-attendee').textContent = data.attendee_name;
 
+        // Show the ticket view
+        const ticketView = document.getElementById('ticket-view');
+        ticketView.style.display = 'block';
+
+        // Generate QR code
         const qrContainer = document.getElementById('ticket-qr');
         qrContainer.innerHTML = '';
 
-        // Generate QR with the signed token
-        // Use toDataURL for broader compatibility, then display as an <img>
-        QRCode.toDataURL(data.qr_data, {
-            width: 250,
-            margin: 1,
-            color: { dark: '#1a0a2e', light: '#ffffff' },
-        }, (err, url) => {
-            if (err) {
-                qrContainer.textContent = 'QR code generation failed. Your ticket ID: ' + data.ticket_id;
-                console.error('QR error:', err);
-            } else {
-                const img = document.createElement('img');
-                img.src = url;
-                img.alt = 'Ticket QR Code';
-                img.style.width = '250px';
-                img.style.height = '250px';
-                qrContainer.appendChild(img);
-            }
-        });
-
-        document.getElementById('ticket-view').style.display = 'block';
+        if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+            const qrCanvas = document.createElement('canvas');
+            QRCode.toCanvas(qrCanvas, data.qr_data, {
+                width: 250,
+                margin: 1,
+                color: { dark: '#1a0a2e', light: '#ffffff' },
+            }, function(err) {
+                if (err) {
+                    console.error('QR toCanvas error:', err);
+                    qrContainer.innerHTML = '<p style="color:#ff6b6b;">QR failed. Ticket: ' + data.ticket_id + '</p>';
+                } else {
+                    qrContainer.appendChild(qrCanvas);
+                }
+            });
+        } else {
+            console.error('QRCode library not available. typeof QRCode:', typeof QRCode);
+            qrContainer.innerHTML = '<p style="color:#ff6b6b;">QR library failed to load.<br>Ticket ID: ' + data.ticket_id + '</p>';
+        }
     }
 
     // Mode selector

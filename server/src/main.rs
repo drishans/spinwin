@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::Json,
+    response::{Html, Json},
     routing::{get, post},
     Router,
 };
@@ -470,6 +470,12 @@ async fn main() {
         .route("/api/check-email/{email}", get(check_email))
         .with_state(state)
         .layer(CorsLayer::permissive());
+
+    // Clean URL routes serving HTML files
+    let api = api.route(
+        "/scan",
+        get(|| async { Html(include_str!("../frontend/scan.html")) }),
+    );
 
     let app = api.fallback_service(ServeDir::new("frontend"));
 
