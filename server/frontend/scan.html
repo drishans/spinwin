@@ -182,6 +182,8 @@
                 ? 'Camera access denied. Please allow camera access in your browser settings.'
                 : e.name === 'NotFoundError'
                 ? 'No camera found on this device.'
+                : e.name === 'NotReadableError'
+                ? 'Camera is in use by another app. Close other apps using the camera and refresh.'
                 : 'Camera error: ' + e.message;
             document.getElementById('status-line').textContent = msg;
         }
