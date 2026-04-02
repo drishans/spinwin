@@ -119,6 +119,13 @@
             cursor: not-allowed;
         }
 
+        .email-gate {
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .email-gate input::placeholder { color: rgba(255,255,255,0.4); }
+
         /* Modal overlay */
         .modal-overlay {
             display: none;
@@ -260,19 +267,29 @@
         <canvas id="wheel-canvas" width="760" height="760"></canvas>
     </div>
 
-    <button class="spin-btn" id="spin-btn">SPIN!</button>
+    <!-- Email gate: shown before spin -->
+    <div class="email-gate" id="email-gate">
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 0.5rem;">Enter your email to spin</p>
+        <div style="display:flex; gap:0.5rem; max-width:380px; width:90vw;">
+            <input type="email" id="gate-email" placeholder="your@email.com" autocomplete="email"
+                style="flex:1; padding:0.7rem 1rem; border:1px solid rgba(255,255,255,0.2); border-radius:50px; background:rgba(255,255,255,0.1); color:white; font-size:1rem;">
+            <button class="spin-btn" id="gate-btn" style="margin:0; padding:0.7rem 1.5rem; font-size:1rem;">GO</button>
+        </div>
+        <div class="error-msg" id="gate-error" style="margin-top:0.5rem;"></div>
+    </div>
 
-    <!-- Claim Modal -->
+    <!-- Spin button: hidden until email verified -->
+    <button class="spin-btn" id="spin-btn" style="display:none;">SPIN!</button>
+
+    <!-- Claim Modal: only asks for name now -->
     <div class="modal-overlay" id="claim-modal">
         <div class="modal">
             <h2>Congratulations!</h2>
             <p>You won: <strong id="prize-name-display"></strong></p>
             <img id="prize-img" class="prize-image" alt="Prize" src="">
-            <p style="font-size:0.85rem; color:rgba(255,255,255,0.7);">Enter your details to claim your prize</p>
+            <p style="font-size:0.85rem; color:rgba(255,255,255,0.7);">Enter your name to claim your prize</p>
             <label for="claim-name">Full Name</label>
             <input type="text" id="claim-name" placeholder="Your name" autocomplete="name">
-            <label for="claim-email">Email</label>
-            <input type="email" id="claim-email" placeholder="your@email.com" autocomplete="email">
             <div class="error-msg" id="claim-error"></div>
             <button class="claim-btn" id="claim-btn">Claim Prize</button>
         </div>
@@ -310,6 +327,7 @@
     let currentMode = 'dynamic';
     let spinning = false;
     let spinResult = null;
+    let verifiedEmail = null;
 
     const canvas = document.getElementById('wheel-canvas');
     const ctx = canvas.getContext('2d');
@@ -496,14 +514,60 @@
         requestAnimationFrame(drawConfetti);
     }
 
-    // Spin button
+    // Email gate — verify email before allowing spin
+    document.getElementById('gate-btn').addEventListener('click', async () => {
+        const email = document.getElementById('gate-email').value.trim();
+        const errorEl = document.getElementById('gate-error');
+
+        if (!email) {
+            errorEl.textContent = 'Please enter your email';
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errorEl.textContent = 'Please enter a valid email address';
+            return;
+        }
+
+        document.getElementById('gate-btn').disabled = true;
+        errorEl.textContent = '';
+
+        try {
+            const res = await fetch(`/api/check-email/${encodeURIComponent(email)}`);
+            const data = await res.json();
+
+            if (data.already_played) {
+                errorEl.textContent = 'This email has already been used to play';
+                document.getElementById('gate-btn').disabled = false;
+                return;
+            }
+
+            // Email is valid and unused — show spin button
+            verifiedEmail = email;
+            document.getElementById('email-gate').style.display = 'none';
+            document.getElementById('spin-btn').style.display = 'block';
+        } catch (e) {
+            errorEl.textContent = 'Network error — please try again';
+            document.getElementById('gate-btn').disabled = false;
+        }
+    });
+
+    // Allow Enter key on email input
+    document.getElementById('gate-email').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('gate-btn').click();
+    });
+
+    // Spin button — now sends email to server
     document.getElementById('spin-btn').addEventListener('click', async () => {
-        if (spinning) return;
+        if (spinning || !verifiedEmail) return;
         spinning = true;
         document.getElementById('spin-btn').disabled = true;
 
         try {
-            const res = await fetch('/api/spin', { method: 'POST' });
+            const res = await fetch('/api/spin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: verifiedEmail }),
+            });
             if (!res.ok) {
                 const err = await res.json();
                 alert(err.error || 'Failed to spin');
@@ -514,8 +578,6 @@
 
             spinResult = await res.json();
 
-            // The server returns an angle that already includes full rotations
-            // We negate it because the wheel rotates clockwise but our pointer is at top
             animateSpin(spinResult.angle, 4000, () => {
                 spinning = false;
                 launchConfetti();
@@ -528,7 +590,7 @@
         }
     });
 
-    // Claim modal
+    // Claim modal — only asks for name now (email already captured)
     function showClaimModal(prize) {
         document.getElementById('prize-name-display').textContent = prize.name;
         document.getElementById('prize-img').src = `/assets/${prize.image_url}`;
@@ -539,16 +601,10 @@
 
     document.getElementById('claim-btn').addEventListener('click', async () => {
         const name = document.getElementById('claim-name').value.trim();
-        const email = document.getElementById('claim-email').value.trim();
         const errorEl = document.getElementById('claim-error');
 
-        if (!name || !email) {
-            errorEl.textContent = 'Please fill in both fields';
-            return;
-        }
-
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            errorEl.textContent = 'Please enter a valid email address';
+        if (!name) {
+            errorEl.textContent = 'Please enter your name';
             return;
         }
 
@@ -561,7 +617,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name,
-                    email,
+                    email: verifiedEmail,
                     prize_id: spinResult.prize.id,
                 }),
             });
@@ -574,7 +630,6 @@
                 return;
             }
 
-            // Show ticket
             showTicket(data);
         } catch (e) {
             errorEl.textContent = 'Network error — please try again';

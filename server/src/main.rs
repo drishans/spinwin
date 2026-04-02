@@ -115,9 +115,33 @@ async fn check_email(
     })))
 }
 
+#[derive(Deserialize)]
+struct SpinRequest {
+    email: String,
+}
+
 async fn spin(
     State(state): State<Arc<AppState>>,
+    Json(req): Json<SpinRequest>,
 ) -> Result<Json<SpinResult>, (StatusCode, Json<ErrorResponse>)> {
+    let email = req.email.trim().to_lowercase();
+
+    // Check if email already used
+    let existing = sqlx::query("SELECT id FROM tickets WHERE email = ?")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    if existing.is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "This email has already been used".to_string(),
+            }),
+        ));
+    }
+
     let rows =
         sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes WHERE remaining > 0")
             .fetch_all(&state.db)

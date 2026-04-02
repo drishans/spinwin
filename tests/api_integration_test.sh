@@ -75,7 +75,7 @@ assert_eq "Total stock is 450" "450" "$TOTAL_STOCK"
 # ──────────────────────────────────────────────
 echo ""
 echo "── Test: Spin returns valid prize and angle ──"
-SPIN=$(curl -s -X POST "$BASE/api/spin")
+SPIN=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d '{"email":"alice@test.com"}')
 SPIN_PRIZE_ID=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['id'])")
 SPIN_PRIZE_NAME=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['name'])")
 SPIN_ANGLE=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['angle'])")
@@ -90,7 +90,7 @@ echo "── Test: Wheel-prize alignment ──"
 ALIGNMENT_PASS=0
 ALIGNMENT_TOTAL=20
 for i in $(seq 1 $ALIGNMENT_TOTAL); do
-    RESULT=$(curl -s -X POST "$BASE/api/spin")
+    RESULT=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d "{\"email\":\"align${i}@test.com\"}")
     python3 -c "
 import sys, json
 result = json.loads('''$RESULT''')
@@ -146,15 +146,23 @@ QR_TOKEN=$(echo "$CLAIM" | python3 -c "import sys,json; print(json.load(sys.stdi
 # ──────────────────────────────────────────────
 echo ""
 echo "── Test: Duplicate email rejection ──"
-DUPE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/claim" \
+# Spin with already-claimed email should fail
+DUPE_SPIN=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/spin" \
+    -H 'Content-Type: application/json' \
+    -d '{"email":"alice@test.com"}')
+assert_eq "Duplicate email spin returns 409" "409" "$DUPE_SPIN"
+
+DUPE_CLAIM=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/claim" \
     -H 'Content-Type: application/json' \
     -d "{\"name\":\"Alice Again\",\"email\":\"alice@test.com\",\"prize_id\":1}")
-assert_eq "Duplicate email returns 409" "409" "$DUPE"
+assert_eq "Duplicate email claim returns 409" "409" "$DUPE_CLAIM"
 
-# Different email should work
+# Different email should work (spin first, then claim)
+BOB_SPIN=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d '{"email":"bob@test.com"}')
+BOB_PRIZE_ID=$(echo "$BOB_SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['id'])")
 CLAIM2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/claim" \
     -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Bob Test\",\"email\":\"bob@test.com\",\"prize_id\":1}")
+    -d "{\"name\":\"Bob Test\",\"email\":\"bob@test.com\",\"prize_id\":$BOB_PRIZE_ID}")
 assert_eq "Different email succeeds (200)" "200" "$CLAIM2_STATUS"
 
 # ──────────────────────────────────────────────
