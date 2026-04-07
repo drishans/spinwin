@@ -186,14 +186,12 @@ async fn spin(
     let selected = &prizes[selected_idx];
 
     // Calculate landing angle for the wheel animation.
-    // The wheel draws segments clockwise from the top (offset -90°). The pointer is at top.
-    // When the wheel rotates by R degrees, the pointer reads the segment at position (360 - R%360).
-    // So to land on a segment starting at `segment_start`, we need R%360 = 360 - segment_start - offset.
-    let segment_start: f64 = prizes[..selected_idx]
-        .iter()
-        .map(|p| p.remaining as f64 / total_remaining as f64 * 360.0)
-        .sum();
-    let segment_size = selected.remaining as f64 / total_remaining as f64 * 360.0;
+    // The wheel uses equal-sized segments (probability is handled server-side).
+    // The pointer is at the top (12 o'clock). When the wheel rotates by R degrees,
+    // the pointer reads the segment at position (360 - R%360) % 360.
+    let num_prizes = prizes.len() as f64;
+    let segment_size = 360.0 / num_prizes;
+    let segment_start = selected_idx as f64 * segment_size;
     let angle_within_segment = rng.gen_range(0.2..0.8) * segment_size;
     let landing_angle = 360.0 - (segment_start + angle_within_segment);
 
