@@ -96,24 +96,22 @@ import sys, json
 result = json.loads('''$RESULT''')
 prizes_raw = '''$PRIZES'''
 prizes = [p for p in json.loads(prizes_raw) if p['remaining'] > 0]
-total = sum(p['remaining'] for p in prizes)
+num_prizes = len(prizes)
 
 selected_id = result['prize']['id']
 angle = result['angle'] % 360
 
-# Calculate which segment the angle points to
-# pointer_position = (360 - angle) % 360 gives the segment position
+# Equal-sized segments: each segment is 360/N degrees
 pointer_pos = (360 - angle) % 360
+segment_size = 360.0 / num_prizes
 
-start = 0
 landed_on = None
-for p in prizes:
-    sweep = p['remaining'] / total * 360
-    end = start + sweep
+for i, p in enumerate(prizes):
+    start = i * segment_size
+    end = start + segment_size
     if start <= pointer_pos < end:
         landed_on = p['id']
         break
-    start = end
 
 # Handle wraparound for last segment
 if landed_on is None:

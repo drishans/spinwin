@@ -83,21 +83,21 @@ for i in range(1, alignment_total + 1):
     # Re-fetch prizes each time since stock changes
     current_prizes = api_get("/api/prizes")
     available = [p for p in current_prizes if p["remaining"] > 0]
-    total = sum(p["remaining"] for p in available)
+    num_prizes = len(available)
 
     selected_id = result["prize"]["id"]
     angle = result["angle"] % 360
     pointer_pos = (360 - angle) % 360
 
-    start = 0
+    # Equal-sized segments: each segment is 360/N degrees
+    segment_size = 360.0 / num_prizes
     landed_on = None
-    for p in available:
-        sweep = p["remaining"] / total * 360
-        end = start + sweep
+    for idx, p in enumerate(available):
+        start = idx * segment_size
+        end = start + segment_size
         if start <= pointer_pos < end:
             landed_on = p["id"]
             break
-        start = end
 
     if landed_on is None:
         landed_on = available[-1]["id"]
