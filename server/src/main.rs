@@ -618,6 +618,9 @@ async fn init_db(pool: &SqlitePool) {
 
 #[tokio::main]
 async fn main() {
+    // Load .env from the project root (parent of server/)
+    dotenvy::from_filename("../.env").ok();
+
     tracing_subscriber::fmt::init();
 
     // Signing key from env or generate deterministic one for dev
