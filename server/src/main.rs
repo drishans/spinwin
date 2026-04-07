@@ -594,11 +594,11 @@ async fn init_db(pool: &SqlitePool) {
 
     if count.0 == 0 {
         let prizes = vec![
-            ("Necklace", "necklace.svg", 100),
-            ("Ring", "ring.svg", 200),
-            ("Jewelry Set", "jewelry_set.svg", 50),
-            ("Earring", "earring.svg", 50),
-            ("Bangles", "bangles.svg", 50),
+            ("Necklace", "necklace.jpg", 100),
+            ("Ring", "ring.jpg", 200),
+            ("Jewelry Set", "jewelry_set.jpg", 50),
+            ("Earring", "earring.jpg", 50),
+            ("Bangles", "bangles2.jpg", 50),
         ];
         for (name, image, qty) in prizes {
             sqlx::query(
