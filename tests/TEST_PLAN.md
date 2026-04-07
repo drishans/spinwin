@@ -76,6 +76,46 @@ This app handles real inventory (physical prizes) and real people (600-700 atten
 
 ---
 
+### 6. Mystery Prize Fallback
+
+**What:** A 6th prize type ("Mystery Prize") with small fixed stock (10) that becomes an unlimited fallback when all other prizes are exhausted.
+
+**Why:** Without a fallback, late attendees who spin after all regular prizes are gone would hit an error. The Mystery Prize ensures every attendee wins something. We test:
+
+- Mystery Prize starts with limited stock (using `SPINWIN_SMALL_STOCK=1` to seed small quantities)
+- Regular prizes are exhausted after their stock runs out
+- Mystery Prize becomes the only option once all other stock is depleted
+- Mystery Prize awards continue indefinitely (unlimited fallback mode)
+- Stock counts remain consistent throughout
+
+**Test file:** `mystery_prize_test.sh`
+
+---
+
+### 7. Google Sheet Email Validation
+
+**What:** Emails are validated against a published Google Sheet (column B) before a spin is allowed. The sheet is cached with a 5-minute refresh.
+
+**Why:** Only registered attendees should be able to spin. Without this gate, anyone with the URL could claim prizes. In tests, `GOOGLE_SHEET_ID=none` is used to bypass validation so tests don't depend on an external Google Sheet.
+
+**Test file:** Covered in `api_integration_test.sh` (validation bypassed via `GOOGLE_SHEET_ID=none`)
+
+---
+
+### 8. Ticket Recovery & Resend
+
+**What:** If a user enters an email that already has a ticket, the existing QR is re-displayed and they can resend the confirmation email via `POST /api/resend/{email}`.
+
+**Why:** Attendees may close their browser, clear history, or lose their confirmation email. Without recovery, they'd have no way to retrieve their ticket. We test:
+
+- Entering a previously claimed email re-displays the QR ticket
+- `POST /api/resend/{email}` returns success for an existing ticket
+- Resend for a non-existent email returns an appropriate error
+
+**Test file:** `api_integration_test.sh`
+
+---
+
 ## Running the tests
 
 ```bash
@@ -87,6 +127,7 @@ cd spinwin/tests
 ./core_crypto_test.sh      # Unit tests (Rust, fast)
 ./api_integration_test.sh  # API flow tests (starts server)
 ./stress_test.sh           # Concurrent load test (starts server)
+./mystery_prize_test.sh    # Mystery Prize fallback (uses SPINWIN_SMALL_STOCK=1)
 ```
 
-All integration and stress tests start a fresh server with a clean DB and tear it down after. No external dependencies required.
+All integration and stress tests start a fresh server with a clean DB and tear it down after. Tests override `GOOGLE_SHEET_ID=none` and unset SMTP variables to avoid interfering with real services. No external dependencies required.

@@ -1,6 +1,6 @@
 # Spin & Win — WomenNowTV Event Giveaway
 
-A prize wheel web app for a live event with 600-700 attendees. Attendees spin a wheel before the event, win a prize, and receive a cryptographically signed QR ticket they present at the venue to claim it.
+A prize wheel web app for a live event with 600-700 attendees. Attendees spin a wheel before the event, win a prize, and receive a cryptographically signed QR ticket (displayed on-screen and emailed) they present at the venue to claim it.
 
 ## Architecture
 
@@ -10,9 +10,10 @@ spinwin/
 ├── server/            # Axum web server: API, SQLite DB, static file serving
 ├── scanner-wasm/      # WASM wrapper around core for staff scanner page
 └── server/frontend/   # Static HTML/CSS/JS frontend
-    ├── index.html     # Attendee: animated wheel → claim form → QR ticket
+    ├── index.html     # Attendee: animated wheel → claim form → QR ticket + email
     ├── scan.html      # Staff: camera QR scanner → verify → redeem
-    └── wasm/          # Compiled WASM module (generated, gitignored)
+    ├── wasm/          # Compiled WASM module (generated, gitignored)
+    └── .env           # Environment variables (loaded via dotenvy from project root)
 ```
 
 ## Why Rust?
@@ -37,14 +38,17 @@ The WASM scanner verifies ticket signatures **entirely client-side**. At a venue
 | Threat | Mitigation |
 |--------|------------|
 | Same person spins twice | `UNIQUE(email)` constraint on tickets table |
+| Unregistered attendee | Email validated against a published Google Sheet (column B) before spin is allowed |
 | Prize overselling | Atomic `UPDATE ... WHERE remaining > 0`, check affected rows |
+| All prizes exhausted | Mystery Prize acts as unlimited fallback when all other prizes run out of stock |
 | Forged QR code | Ed25519 signature — can't produce valid tickets without server's private key |
 | Screenshot shared to friend | One-time redemption flag: second scan returns "already redeemed" |
 | Tampered ticket data | Signature verification fails if any payload byte changes |
+| Lost ticket | Ticket recovery: re-entering an existing email re-displays the QR and allows resending the confirmation email |
 
 ## Wheel Design
 
-The wheel displays equal-sized segments for all prizes. Prize selection is handled entirely server-side using weighted random selection based on remaining stock — the wheel animation is cosmetic. The client cannot influence which prize is awarded.
+The wheel displays equal-sized segments for all 6 prizes (including Mystery Prize). Prize selection is handled entirely server-side using weighted random selection based on remaining stock — the wheel animation is cosmetic. The client cannot influence which prize is awarded. Prize images are JPG (except Mystery Prize which uses SVG).
 
 ## Setup
 
@@ -58,7 +62,7 @@ The wheel displays equal-sized segments for all prizes. Prize selection is handl
 # Build WASM scanner module
 wasm-pack build scanner-wasm --target web --out-dir ../server/frontend/wasm
 
-# Run the server (dev mode)
+# Run the server (dev mode — loads .env from project root via dotenvy)
 cd server
 cargo run
 
@@ -83,11 +87,12 @@ tests\windows\run_all.bat
 | `SPINWIN_SIGNING_KEY` | dev key | 64-char hex string (32 bytes) for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection string |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
-| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails used for registration validation |
-| `SMTP_EMAIL` | *(none)* | Gmail address for sending ticket confirmation emails |
+| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails are used for registration validation (cached with 5-min refresh) |
+| `SMTP_EMAIL` | *(none)* | Gmail address for sending QR ticket confirmation emails |
 | `SMTP_PASSWORD` | *(none)* | Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
+| `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small stock quantities (used by mystery prize tests) |
 
-For production, generate a signing key:
+Environment variables are loaded from a `.env` file in the project root via **dotenvy**. For production, generate a signing key:
 ```bash
 openssl rand -hex 32
 ```
@@ -108,4 +113,4 @@ openssl rand -hex 32
 
 - [ ] Apple Wallet `.pkpass` ticket generation (endpoint stubbed)
 - [ ] Admin dashboard showing prize inventory and redemption stats
-- [ ] Email confirmation with ticket QR attached
+- [x] Email confirmation with ticket QR attached (Gmail SMTP via `SMTP_EMAIL` / `SMTP_PASSWORD`)
