@@ -83,3 +83,7 @@ Two tables: `prizes` (id, name, image_url, total_qty, remaining) and `tickets` (
 ## Test Strategy
 
 Tests are bash-based integration tests that spin up a fresh server instance with a clean database. The stress test validates concurrent claim safety (100 simultaneous requests, expects exactly 50 successes matching stock). Core crate has standard Rust unit tests for crypto operations.
+
+## Workflow
+
+When committing changes, spawn a subagent to review what changed and update README.md to reflect the current state of the project.

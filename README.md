@@ -42,15 +42,9 @@ The WASM scanner verifies ticket signatures **entirely client-side**. At a venue
 | Screenshot shared to friend | One-time redemption flag: second scan returns "already redeemed" |
 | Tampered ticket data | Signature verification fails if any payload byte changes |
 
-## Wheel Modes
+## Wheel Design
 
-Three wheel visualization modes (selectable via UI toggle, useful for A/B testing):
-
-1. **Dynamic Segments** — Segment sizes proportional to remaining stock. Visually honest: what you see reflects actual odds. Segments resize as prizes are claimed.
-2. **Equal (Weighted)** — 5 equal visual segments. Server-side weighted random selection. Visually clean but hides actual probabilities.
-3. **Fixed Proportional** — Segments proportional to original total stock. Never changes visually, regardless of remaining inventory.
-
-All three modes use server-side prize selection — the wheel animation is cosmetic. The client cannot influence which prize is awarded.
+The wheel displays equal-sized segments for all prizes. Prize selection is handled entirely server-side using weighted random selection based on remaining stock — the wheel animation is cosmetic. The client cannot influence which prize is awarded.
 
 ## Setup
 
@@ -70,6 +64,16 @@ cargo run
 
 # Server starts at http://localhost:3000
 # Staff scanner at http://localhost:3000/scan.html
+```
+
+### Run Tests
+
+```bash
+# Linux/macOS
+cd tests && ./run_all.sh
+
+# Windows
+tests\windows\run_all.bat
 ```
 
 ### Environment Variables
