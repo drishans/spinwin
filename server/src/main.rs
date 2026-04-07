@@ -786,7 +786,9 @@ async fn main() {
     init_db(&pool).await;
 
     // Load registered emails from Google Sheet
-    let sheet_id = std::env::var("GOOGLE_SHEET_ID").ok();
+    let sheet_id = std::env::var("GOOGLE_SHEET_ID")
+        .ok()
+        .filter(|s| !s.is_empty() && s != "none");
     let initial_emails = match &sheet_id {
         Some(id) => match fetch_registered_emails(id).await {
             Ok(emails) => {

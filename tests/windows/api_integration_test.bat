@@ -27,6 +27,9 @@ if exist "%DB_FILE%" del /f "%DB_FILE%"
 REM Start server
 set "DATABASE_URL=sqlite:%DB_FILE%?mode=rwc"
 set "BIND_ADDR=127.0.0.1:%PORT%"
+set "GOOGLE_SHEET_ID=none"
+set "SMTP_EMAIL="
+set "SMTP_PASSWORD="
 start /b "" "%BINARY%" > nul 2>&1
 timeout /t 3 /nobreak > nul
 

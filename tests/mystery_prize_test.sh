@@ -32,7 +32,7 @@ cargo build --release --manifest-path "$PROJECT_DIR/Cargo.toml" 2>&1 | tail -1
 
 # Start server
 rm -f "$DB_FILE"
-DATABASE_URL="sqlite:$DB_FILE?mode=rwc" BIND_ADDR="127.0.0.1:$PORT" SPINWIN_SMALL_STOCK=1 "$BINARY" &
+DATABASE_URL="sqlite:$DB_FILE?mode=rwc" BIND_ADDR="127.0.0.1:$PORT" GOOGLE_SHEET_ID="" SMTP_EMAIL="" SMTP_PASSWORD="" SPINWIN_SMALL_STOCK=1 "$BINARY" &
 SERVER_PID=$!
 sleep 2
 
