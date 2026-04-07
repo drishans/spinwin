@@ -172,16 +172,44 @@ async fn check_email(
     }
     drop(registered);
 
-    let existing = sqlx::query("SELECT id FROM tickets WHERE email = ?")
+    let existing = sqlx::query("SELECT id, name, token, prize_id FROM tickets WHERE email = ?")
         .bind(&email)
         .fetch_optional(&state.db)
         .await
         .map_err(db_err)?;
 
-    Ok(Json(serde_json::json!({
-        "already_played": existing.is_some(),
-        "not_registered": false
-    })))
+    match existing {
+        Some(row) => {
+            let ticket_id: String = row.get("id");
+            let attendee_name: String = row.get("name");
+            let qr_data: String = row.get("token");
+            let prize_id: i64 = row.get("prize_id");
+
+            let prize_name: String = sqlx::query("SELECT name FROM prizes WHERE id = ?")
+                .bind(prize_id)
+                .fetch_one(&state.db)
+                .await
+                .map_err(db_err)?
+                .get("name");
+
+            Ok(Json(serde_json::json!({
+                "already_played": true,
+                "not_registered": false,
+                "ticket": {
+                    "ticket_id": ticket_id,
+                    "qr_data": qr_data,
+                    "prize_name": prize_name,
+                    "attendee_name": attendee_name
+                }
+            })))
+        }
+        None => {
+            Ok(Json(serde_json::json!({
+                "already_played": false,
+                "not_registered": false
+            })))
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -604,6 +632,50 @@ async fn redeem(
     }))
 }
 
+async fn resend_ticket(
+    State(state): State<Arc<AppState>>,
+    Path(email): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let email = email.trim().to_lowercase();
+
+    let row = sqlx::query("SELECT t.name, t.token, t.prize_id, p.name as prize_name FROM tickets t JOIN prizes p ON t.prize_id = p.id WHERE t.email = ?")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    match row {
+        Some(r) => {
+            let attendee_name: String = r.get("name");
+            let qr_data: String = r.get("token");
+            let prize_name: String = r.get("prize_name");
+
+            if let Some(smtp) = &state.smtp {
+                let smtp_email = smtp.email.clone();
+                let smtp_password = smtp.password.clone();
+                let to = email.clone();
+                let aname = attendee_name.clone();
+                let pname = prize_name.clone();
+                let qr = qr_data.clone();
+                tokio::spawn(async move {
+                    let cfg = SmtpConfig { email: smtp_email, password: smtp_password };
+                    send_ticket_email(&cfg, &to, &aname, &pname, &qr).await;
+                });
+            }
+
+            Ok(Json(serde_json::json!({ "sent": true })))
+        }
+        None => {
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "No ticket found for this email".to_string(),
+                }),
+            ))
+        }
+    }
+}
+
 async fn get_public_key(State(state): State<Arc<AppState>>) -> String {
     URL_SAFE_NO_PAD.encode(state.verifying_key.to_bytes())
 }
@@ -765,6 +837,7 @@ async fn main() {
         .route("/api/redeem/{token}", post(redeem))
         .route("/api/public-key", get(get_public_key))
         .route("/api/check-email/{email}", get(check_email))
+        .route("/api/resend/{email}", post(resend_ticket))
         .with_state(state)
         .layer(CorsLayer::permissive());
 

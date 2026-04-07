@@ -277,7 +277,9 @@
                 We'll also send a copy to your email.<br>
                 See you at the Sari Parade!
             </p>
-            <p class="ticket-note">Present this QR code at the event booth to collect your prize.<br>Each code is single-use and cannot be shared.</p>
+            <button class="claim-btn" id="resend-btn" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.15); font-size:0.85rem; padding:0.6rem 1.5rem;">Resend Email</button>
+            <p id="resend-msg" style="color:rgba(255,255,255,0.6); font-size:0.8rem; margin-top:0.5rem;"></p>
+            <p class="ticket-note">Present this QR code at the Sari Parade booth to collect your prize.<br>Each code is single-use and cannot be shared.</p>
         </div>
     </div>
 
@@ -483,8 +485,8 @@
             }
 
             if (data.already_played) {
-                errorEl.textContent = 'This email has already been used to play';
-                document.getElementById('gate-btn').disabled = false;
+                // Recover existing ticket — show it directly
+                showTicket(data.ticket);
                 return;
             }
 
@@ -585,15 +587,37 @@
     });
 
     function showTicket(data) {
-        console.log('showTicket called with:', data);
-
         // Hide everything else
         document.getElementById('claim-modal').classList.remove('active');
         document.getElementById('claim-modal').style.display = 'none';
         document.querySelector('header').style.display = 'none';
         document.querySelector('.wheel-container').style.display = 'none';
         document.getElementById('spin-btn').style.display = 'none';
+        document.getElementById('email-gate').style.display = 'none';
         document.getElementById('confetti').style.display = 'none';
+
+        // Show resend button (useful for recovery)
+        const resendBtn = document.getElementById('resend-btn');
+        resendBtn.style.display = 'inline-block';
+        resendBtn.dataset.email = data.attendee_name ? '' : ''; // reset
+        // Store email for resend — use verifiedEmail if available, otherwise look up from data
+        resendBtn.onclick = async () => {
+            const email = verifiedEmail || document.getElementById('gate-email').value.trim();
+            if (!email) return;
+            resendBtn.disabled = true;
+            const msgEl = document.getElementById('resend-msg');
+            try {
+                const res = await fetch(`/api/resend/${encodeURIComponent(email)}`, { method: 'POST' });
+                if (res.ok) {
+                    msgEl.textContent = 'Email sent! Check your inbox.';
+                } else {
+                    msgEl.textContent = 'Failed to resend — please try again.';
+                }
+            } catch (e) {
+                msgEl.textContent = 'Network error — please try again.';
+            }
+            resendBtn.disabled = false;
+        };
 
         // Populate ticket content
         document.getElementById('ticket-prize').textContent = data.prize_name;
