@@ -235,7 +235,7 @@
 
     <!-- Email gate: shown before spin, replaced by spin button after verification -->
     <div class="email-gate" id="email-gate">
-        <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 0.5rem;">Enter your email to spin</p>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 0.5rem;">Enter your registered email to spin</p>
         <div style="display:flex; gap:0.5rem; max-width:380px; width:90vw;">
             <input type="email" id="gate-email" placeholder="your@email.com" autocomplete="email"
                 style="flex:1; padding:0.7rem 1rem; border:1px solid rgba(255,255,255,0.2); border-radius:50px; background:rgba(255,255,255,0.1); color:white; font-size:1rem;">
@@ -475,6 +475,12 @@
         try {
             const res = await fetch(`/api/check-email/${encodeURIComponent(email)}`);
             const data = await res.json();
+
+            if (data.not_registered) {
+                errorEl.textContent = 'This email is not registered for the event';
+                document.getElementById('gate-btn').disabled = false;
+                return;
+            }
 
             if (data.already_played) {
                 errorEl.textContent = 'This email has already been used to play';

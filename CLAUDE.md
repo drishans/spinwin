@@ -46,6 +46,9 @@ cd core && cargo test
 | `SPINWIN_SIGNING_KEY` | Dev key | 64-char hex string for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
+| `GOOGLE_SHEET_ID` | *(none)* | Google Sheet ID for registered email validation (publish sheet with "anyone with link") |
+| `SMTP_EMAIL` | *(none)* | Gmail address for sending ticket emails |
+| `SMTP_PASSWORD` | *(none)* | Gmail app password (requires 2FA enabled) |
 
 Generate a production key: `openssl rand -hex 32`
 

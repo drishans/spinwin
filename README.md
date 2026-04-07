@@ -83,6 +83,9 @@ tests\windows\run_all.bat
 | `SPINWIN_SIGNING_KEY` | dev key | 64-char hex string (32 bytes) for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection string |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
+| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails used for registration validation |
+| `SMTP_EMAIL` | *(none)* | Gmail address for sending ticket confirmation emails |
+| `SMTP_PASSWORD` | *(none)* | Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
 
 For production, generate a signing key:
 ```bash

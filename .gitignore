@@ -7,3 +7,4 @@ spinwin.db
 server/frontend/wasm/*.wasm
 server/frontend/wasm/*.js
 server/frontend/wasm/*.d.ts
+.claude/settings.local.json

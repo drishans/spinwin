@@ -12,14 +12,23 @@ use serde::{Deserialize, Serialize};
 use spinwin_core::{sign_ticket, verify_ticket, TicketPayload};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
+use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
+
+struct SmtpConfig {
+    email: String,
+    password: String,
+}
 
 struct AppState {
     db: SqlitePool,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
+    registered_emails: RwLock<HashSet<String>>,
+    smtp: Option<SmtpConfig>,
 }
 
 #[derive(Serialize, Clone)]
@@ -100,10 +109,69 @@ async fn get_prizes(State(state): State<Arc<AppState>>) -> Json<Vec<PrizeInfo>> 
     Json(prizes)
 }
 
+async fn fetch_registered_emails(sheet_id: &str) -> Result<HashSet<String>, String> {
+    let url = format!(
+        "https://docs.google.com/spreadsheets/d/{}/gviz/tq?tqx=out:csv",
+        sheet_id
+    );
+    let body = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("Failed to fetch sheet: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read sheet body: {}", e))?;
+
+    let mut emails = HashSet::new();
+    let mut reader = csv::Reader::from_reader(body.as_bytes());
+    for result in reader.records() {
+        if let Ok(record) = result {
+            // Column B is index 1
+            if let Some(email) = record.get(1) {
+                let email = email.trim().to_lowercase();
+                if !email.is_empty() && email.contains('@') {
+                    emails.insert(email);
+                }
+            }
+        }
+    }
+    Ok(emails)
+}
+
+fn spawn_email_refresh(state: Arc<AppState>, sheet_id: String) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            match fetch_registered_emails(&sheet_id).await {
+                Ok(emails) => {
+                    let count = emails.len();
+                    *state.registered_emails.write().await = emails;
+                    tracing::info!("Refreshed registered emails: {} entries", count);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to refresh emails: {}", e);
+                }
+            }
+        }
+    });
+}
+
 async fn check_email(
     State(state): State<Arc<AppState>>,
     Path(email): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let email = email.trim().to_lowercase();
+
+    // Check if email is in the registered list
+    let registered = state.registered_emails.read().await;
+    if !registered.is_empty() && !registered.contains(&email) {
+        return Ok(Json(serde_json::json!({
+            "already_played": false,
+            "not_registered": true
+        })));
+    }
+    drop(registered);
+
     let existing = sqlx::query("SELECT id FROM tickets WHERE email = ?")
         .bind(&email)
         .fetch_optional(&state.db)
@@ -111,7 +179,8 @@ async fn check_email(
         .map_err(db_err)?;
 
     Ok(Json(serde_json::json!({
-        "already_played": existing.is_some()
+        "already_played": existing.is_some(),
+        "not_registered": false
     })))
 }
 
@@ -125,6 +194,18 @@ async fn spin(
     Json(req): Json<SpinRequest>,
 ) -> Result<Json<SpinResult>, (StatusCode, Json<ErrorResponse>)> {
     let email = req.email.trim().to_lowercase();
+
+    // Check if email is registered
+    let registered = state.registered_emails.read().await;
+    if !registered.is_empty() && !registered.contains(&email) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "This email is not registered for the event".to_string(),
+            }),
+        ));
+    }
+    drop(registered);
 
     // Check if email already used
     let existing = sqlx::query("SELECT id FROM tickets WHERE email = ?")
@@ -303,12 +384,100 @@ async fn claim(
         return Err(db_err(e));
     }
 
+    // Send ticket email in the background (don't block the response)
+    if let Some(smtp) = &state.smtp {
+        let smtp_email = smtp.email.clone();
+        let smtp_password = smtp.password.clone();
+        let to = email.clone();
+        let aname = name.clone();
+        let pname = prize_name.clone();
+        let qr = qr_data.clone();
+        tokio::spawn(async move {
+            let cfg = SmtpConfig { email: smtp_email, password: smtp_password };
+            send_ticket_email(&cfg, &to, &aname, &pname, &qr).await;
+        });
+    }
+
     Ok(Json(ClaimResponse {
         ticket_id,
         qr_data,
         prize_name,
         attendee_name: name,
     }))
+}
+
+async fn send_ticket_email(smtp: &SmtpConfig, to_email: &str, attendee_name: &str, prize_name: &str, qr_data: &str) {
+    use lettre::{
+        message::{header::ContentType, Attachment, MultiPart, SinglePart},
+        transport::smtp::authentication::Credentials,
+        AsyncSmtpTransport, AsyncTransport, Message,
+    };
+
+    // Generate QR code as PNG bytes
+    let qr_png = match qrcode::QrCode::new(qr_data.as_bytes()) {
+        Ok(code) => {
+            let img = code.render::<image::Luma<u8>>().quiet_zone(true).min_dimensions(300, 300).build();
+            let mut buf = std::io::Cursor::new(Vec::new());
+            if img.write_to(&mut buf, image::ImageFormat::Png).is_err() {
+                tracing::error!("Failed to encode QR PNG for {}", to_email);
+                return;
+            }
+            buf.into_inner()
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate QR code for {}: {}", to_email, e);
+            return;
+        }
+    };
+
+    let html_body = format!(
+        r#"<div style="font-family:sans-serif;max-width:480px;margin:0 auto;text-align:center;">
+        <h2 style="color:#7b2d8e;">Spin & Win — WomenNowTV Sari Parade</h2>
+        <p>Hi <strong>{}</strong>,</p>
+        <p>You won a <strong style="color:#f9d423;">{}</strong>!</p>
+        <p>Present this QR code at the Sari Parade booth to collect your prize:</p>
+        <p><img src="cid:ticket-qr" width="250" height="250" alt="QR Ticket" /></p>
+        <p style="color:#888;font-size:0.85rem;">Each code is single-use and cannot be shared.</p>
+        </div>"#,
+        attendee_name, prize_name
+    );
+
+    let qr_attachment = Attachment::new_inline("ticket-qr".to_string())
+        .body(qr_png, ContentType::parse("image/png").unwrap());
+
+    let email = match Message::builder()
+        .from(smtp.email.parse().unwrap())
+        .to(to_email.parse().unwrap())
+        .subject(format!("Your Spin & Win Prize: {}", prize_name))
+        .multipart(
+            MultiPart::related()
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_HTML)
+                        .body(html_body),
+                )
+                .singlepart(qr_attachment),
+        ) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::error!("Failed to build email for {}: {}", to_email, e);
+            return;
+        }
+    };
+
+    let creds = Credentials::new(smtp.email.clone(), smtp.password.clone());
+    let mailer = match AsyncSmtpTransport::<lettre::Tokio1Executor>::relay("smtp.gmail.com") {
+        Ok(builder) => builder.credentials(creds).build(),
+        Err(e) => {
+            tracing::error!("Failed to create SMTP transport: {}", e);
+            return;
+        }
+    };
+
+    match mailer.send(email).await {
+        Ok(_) => tracing::info!("Ticket email sent to {}", to_email),
+        Err(e) => tracing::error!("Failed to send email to {}: {}", to_email, e),
+    }
 }
 
 async fn verify_handler(
@@ -476,11 +645,49 @@ async fn main() {
 
     init_db(&pool).await;
 
+    // Load registered emails from Google Sheet
+    let sheet_id = std::env::var("GOOGLE_SHEET_ID").ok();
+    let initial_emails = match &sheet_id {
+        Some(id) => match fetch_registered_emails(id).await {
+            Ok(emails) => {
+                tracing::info!("Loaded {} registered emails from Google Sheet", emails.len());
+                emails
+            }
+            Err(e) => {
+                tracing::error!("Failed to load emails from Google Sheet: {}", e);
+                HashSet::new()
+            }
+        },
+        None => {
+            tracing::warn!("No GOOGLE_SHEET_ID set — all emails will be allowed");
+            HashSet::new()
+        }
+    };
+
+    // SMTP config for sending ticket emails
+    let smtp = match (std::env::var("SMTP_EMAIL"), std::env::var("SMTP_PASSWORD")) {
+        (Ok(email), Ok(password)) => {
+            tracing::info!("SMTP configured — ticket emails will be sent via {}", email);
+            Some(SmtpConfig { email, password })
+        }
+        _ => {
+            tracing::warn!("SMTP_EMAIL/SMTP_PASSWORD not set — ticket emails disabled");
+            None
+        }
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         signing_key,
         verifying_key,
+        registered_emails: RwLock::new(initial_emails),
+        smtp,
     });
+
+    // Start background refresh for registered emails
+    if let Some(id) = sheet_id {
+        spawn_email_refresh(state.clone(), id);
+    }
 
     let api = Router::new()
         .route("/api/prizes", get(get_prizes))
