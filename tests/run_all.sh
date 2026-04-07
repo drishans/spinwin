@@ -29,6 +29,8 @@ run_test() {
 
 run_test "Core Crypto Tests" "$SCRIPT_DIR/core_crypto_test.sh"
 run_test "API Integration Tests" "$SCRIPT_DIR/api_integration_test.sh"
+run_test "Prize Alignment Test" "$SCRIPT_DIR/prize_alignment_test.sh"
+run_test "Mystery Prize Test" "$SCRIPT_DIR/mystery_prize_test.sh"
 run_test "Concurrent Stress Test" "$SCRIPT_DIR/stress_test.sh"
 
 echo "╔════════════════════════════════════════════╗"

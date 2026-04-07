@@ -229,7 +229,7 @@ async fn spin(
             .await
             .map_err(db_err)?;
 
-    let prizes: Vec<PrizeInfo> = rows
+    let mut prizes: Vec<PrizeInfo> = rows
         .iter()
         .map(|r| PrizeInfo {
             id: r.get("id"),
@@ -239,6 +239,36 @@ async fn spin(
             remaining: r.get("remaining"),
         })
         .collect();
+
+    // If only Mystery Prize (or nothing) has stock, fall back to unlimited mystery
+    let non_mystery: Vec<&PrizeInfo> = prizes.iter().filter(|p| p.name != "Mystery Prize").collect();
+    if non_mystery.is_empty() {
+        // Get mystery prize info (even if remaining is 0)
+        let mystery_row = sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes WHERE name = 'Mystery Prize'")
+            .fetch_optional(&state.db)
+            .await
+            .map_err(db_err)?;
+
+        match mystery_row {
+            Some(r) => {
+                prizes = vec![PrizeInfo {
+                    id: r.get("id"),
+                    name: r.get("name"),
+                    image_url: r.get("image_url"),
+                    total_qty: r.get("total_qty"),
+                    remaining: 1, // virtual stock for selection
+                }];
+            }
+            None => {
+                return Err((
+                    StatusCode::GONE,
+                    Json(ErrorResponse {
+                        error: "All prizes have been claimed!".to_string(),
+                    }),
+                ));
+            }
+        }
+    }
 
     if prizes.is_empty() {
         return Err((
@@ -326,12 +356,33 @@ async fn claim(
         .map_err(db_err)?;
 
     if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::GONE,
-            Json(ErrorResponse {
-                error: "This prize is no longer available".to_string(),
-            }),
-        ));
+        // Check if this is Mystery Prize in fallback mode (all other prizes exhausted)
+        let is_mystery: bool = sqlx::query("SELECT name FROM prizes WHERE id = ?")
+            .bind(req.prize_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(db_err)?
+            .map(|r| {
+                let name: String = r.get("name");
+                name == "Mystery Prize"
+            })
+            .unwrap_or(false);
+
+        let others_exhausted: bool = sqlx::query("SELECT COUNT(*) as cnt FROM prizes WHERE name != 'Mystery Prize' AND remaining > 0")
+            .fetch_one(&state.db)
+            .await
+            .map_err(db_err)?
+            .get::<i64, _>("cnt") == 0;
+
+        if !(is_mystery && others_exhausted) {
+            return Err((
+                StatusCode::GONE,
+                Json(ErrorResponse {
+                    error: "This prize is no longer available".to_string(),
+                }),
+            ));
+        }
+        // Mystery Prize in fallback mode — allow claim without stock decrement
     }
 
     // Get prize name
@@ -593,13 +644,27 @@ async fn init_db(pool: &SqlitePool) {
         .expect("count prizes");
 
     if count.0 == 0 {
-        let prizes = vec![
-            ("Necklace", "necklace.jpg", 100),
-            ("Ring", "ring.jpg", 200),
-            ("Jewelry Set", "jewelry_set.jpg", 50),
-            ("Earring", "earring.jpg", 50),
-            ("Bangles", "bangles2.jpg", 50),
-        ];
+        let small_stock = std::env::var("SPINWIN_SMALL_STOCK").is_ok();
+        let prizes: Vec<(&str, &str, i64)> = if small_stock {
+            tracing::info!("Using small stock quantities (test mode)");
+            vec![
+                ("Necklace", "necklace.jpg", 3),
+                ("Ring", "ring.jpg", 5),
+                ("Jewelry Set", "jewelry_set.jpg", 2),
+                ("Earring", "earring.jpg", 2),
+                ("Bangles", "bangles2.jpg", 2),
+                ("Mystery Prize", "mystery.svg", 2),
+            ]
+        } else {
+            vec![
+                ("Necklace", "necklace.jpg", 100),
+                ("Ring", "ring.jpg", 200),
+                ("Jewelry Set", "jewelry_set.jpg", 50),
+                ("Earring", "earring.jpg", 50),
+                ("Bangles", "bangles2.jpg", 50),
+                ("Mystery Prize", "mystery.svg", 10),
+            ]
+        };
         for (name, image, qty) in prizes {
             sqlx::query(
                 "INSERT INTO prizes (name, image_url, total_qty, remaining) VALUES (?, ?, ?, ?)",

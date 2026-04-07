@@ -15,6 +15,7 @@ echo.
 call :run_test "Core Crypto Tests" "%SCRIPT_DIR%core_crypto_test.bat"
 call :run_test "API Integration Tests" "%SCRIPT_DIR%api_integration_test.bat"
 call :run_test "Prize Alignment Test" "%SCRIPT_DIR%prize_alignment_test.bat"
+call :run_test "Mystery Prize Test" "%SCRIPT_DIR%mystery_prize_test.bat"
 call :run_test "Concurrent Stress Test" "%SCRIPT_DIR%stress_test.bat"
 
 echo +============================================+

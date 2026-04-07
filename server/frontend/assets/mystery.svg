@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <rect width="120" height="120" rx="16" fill="#2d1b4e"/>
+  <!-- Gift box body -->
+  <rect x="25" y="55" width="70" height="45" rx="4" fill="#f9d423" opacity="0.9"/>
+  <!-- Gift box lid -->
+  <rect x="20" y="45" width="80" height="14" rx="4" fill="#f9d423"/>
+  <!-- Ribbon vertical -->
+  <rect x="55" y="45" width="10" height="55" fill="#ff4e50"/>
+  <!-- Ribbon horizontal -->
+  <rect x="20" y="49" width="80" height="6" fill="#ff4e50"/>
+  <!-- Question mark -->
+  <text x="60" y="38" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="bold" fill="#f9d423">?</text>
+  <!-- Sparkles -->
+  <circle cx="30" cy="25" r="2" fill="#f9d423" opacity="0.7"/>
+  <circle cx="90" cy="30" r="2.5" fill="#f9d423" opacity="0.6"/>
+  <circle cx="18" cy="50" r="1.5" fill="#ff4e50" opacity="0.5"/>
+  <circle cx="102" cy="45" r="1.5" fill="#ff4e50" opacity="0.5"/>
+</svg>
