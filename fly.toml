@@ -1,0 +1,19 @@
+app = 'spinwin'
+primary_region = 'sjc'
+
+[build]
+
+[env]
+  DATABASE_URL = "sqlite:/data/spinwin.db?mode=rwc"
+  BIND_ADDR = "0.0.0.0:8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = "spinwin_data"
+  destination = "/data"
