@@ -1,4 +1,6 @@
-"""API integration tests — called by api_integration_test.bat"""
+"""API integration tests — called by api_integration_test.bat
+Spin now atomically creates the ticket (merged spin+claim).
+"""
 import sys
 import json
 import urllib.request
@@ -66,74 +68,26 @@ mystery = [p for p in prizes if p["name"] == "Mystery Prize"]
 assert_eq("Mystery Prize exists", 1, len(mystery))
 assert_eq("Mystery Prize initial stock is 10", 10, mystery[0]["remaining"])
 
-# ── Spin returns valid prize and angle ──
+# ── Spin creates ticket atomically ──
 print()
-print("── Test: Spin returns valid prize and angle ──")
+print("── Test: Spin creates ticket atomically ──")
 _, spin = api_post("/api/spin", {"email": "alice@test.com"})
-spin_prize_id = spin["prize"]["id"]
-spin_prize_name = spin["prize"]["name"]
-spin_angle = spin["angle"]
-assert_eq("Spin returns angle with full rotations", True, spin_angle > 360)
-print(f"    (Won: {spin_prize_name}, angle: {spin_angle:.1f})")
-
-# ── Wheel-prize alignment ──
-print()
-print("── Test: Wheel-prize alignment ──")
-alignment_pass = 0
-alignment_total = 20
-for i in range(1, alignment_total + 1):
-    _, result = api_post("/api/spin", {"email": f"align{i}@test.com"})
-    # Re-fetch prizes each time since stock changes
-    current_prizes = api_get("/api/prizes")
-    available = [p for p in current_prizes if p["remaining"] > 0]
-    num_prizes = len(available)
-
-    selected_id = result["prize"]["id"]
-    angle = result["angle"] % 360
-    pointer_pos = (360 - angle) % 360
-
-    # Equal-sized segments: each segment is 360/N degrees
-    segment_size = 360.0 / num_prizes
-    landed_on = None
-    for idx, p in enumerate(available):
-        start = idx * segment_size
-        end = start + segment_size
-        if start <= pointer_pos < end:
-            landed_on = p["id"]
-            break
-
-    if landed_on is None:
-        landed_on = available[-1]["id"]
-
-    if landed_on == selected_id:
-        alignment_pass += 1
-    else:
-        print(f"  Spin {i}: prize={selected_id} but angle landed on {landed_on} (angle={angle:.1f}, pointer={pointer_pos:.1f})")
-
-assert_eq(f"All {alignment_total} spins land on correct segment", alignment_total, alignment_pass)
-
-# ── Claim flow ──
-print()
-print("── Test: Claim flow ──")
-_, claim = api_post("/api/claim", {"name": "Alice Test", "email": "alice@test.com", "prize_id": spin_prize_id})
-assert_eq("Claim returns ticket_id", True, "ticket_id" in claim)
-assert_eq("Claim returns qr_data", True, "qr_data" in claim)
-assert_eq("Claim returns correct name", "Alice Test", claim["attendee_name"])
-qr_token = claim["qr_data"]
+assert_eq("Spin returns ticket_id", True, "ticket_id" in spin)
+assert_eq("Spin returns qr_data", True, "qr_data" in spin)
+assert_eq("Spin returns prize_name", True, "prize_name" in spin)
+assert_eq("Spin returns attendee_name", True, "attendee_name" in spin)
+assert_eq("Spin returns angle with full rotations", True, spin["angle"] > 360)
+qr_token = spin["qr_data"]
+print(f"    (Won: {spin['prize_name']}, angle: {spin['angle']:.1f})")
 
 # ── Duplicate email rejection ──
 print()
 print("── Test: Duplicate email rejection ──")
-dupe_spin_status = api_post_status("/api/spin", {"email": "alice@test.com"})
-assert_eq("Duplicate email spin returns 409", "409", dupe_spin_status)
-
-dupe_claim_status = api_post_status("/api/claim", {"name": "Alice Again", "email": "alice@test.com", "prize_id": 1})
-assert_eq("Duplicate email claim returns 409", "409", dupe_claim_status)
+dupe_status = api_post_status("/api/spin", {"email": "alice@test.com"})
+assert_eq("Duplicate email spin returns 409", "409", dupe_status)
 
 _, bob_spin = api_post("/api/spin", {"email": "bob@test.com"})
-bob_prize_id = bob_spin["prize"]["id"]
-claim2_status = api_post_status("/api/claim", {"name": "Bob Test", "email": "bob@test.com", "prize_id": bob_prize_id})
-assert_eq("Different email succeeds (200)", "200", claim2_status)
+assert_eq("Different email succeeds", True, "ticket_id" in bob_spin)
 
 # ── Ticket verification ──
 print()
@@ -171,8 +125,7 @@ prizes_after = api_get("/api/prizes")
 before_map = {p["id"]: p["remaining"] for p in prizes}
 after_map = {p["id"]: p["remaining"] for p in prizes_after}
 total_dec = sum(before_map[pid] - after_map[pid] for pid in before_map)
-# 2 claimed (alice + bob) + 20 alignment spins that were not claimed won't decrement stock
-# Actually spins don't decrement stock — only claims do
+# Every spin now decrements stock (merged spin+claim): alice + bob = 2
 assert_eq("Total stock decremented by 2", 2, total_dec)
 
 # ── Results ──

@@ -60,19 +60,21 @@ Generate a production key: `openssl rand -hex 32`
 - **scanner-wasm/** — Thin WASM wrapper around core, exports `verify_ticket_wasm()` for browser-side verification.
 
 **Frontend (server/frontend/):**
-- `index.html` — Attendee page: email gate → spin wheel → claim prize → QR ticket display
+- `index.html` — Attendee page: email gate → spin wheel (atomically creates ticket) → QR ticket display
 - `scan.html` — Staff scanner: camera QR scan → WASM signature verify (offline capable) → server redeem
 
 **API endpoints (server/src/main.rs):**
 - `GET /api/prizes` — List prizes with stock
-- `GET /api/check-email/{email}` — Pre-spin duplicate check
-- `POST /api/spin` — Server selects prize by weighted random (remaining stock), returns prize + landing angle
-- `POST /api/claim` — Creates signed ticket, returns QR data
+- `GET /api/check-email/{email}` — Pre-spin duplicate check + returns attendee name from Google Sheet
+- `POST /api/spin` — Atomic spin+claim: selects prize, decrements stock, creates signed ticket, sends email, returns prize + angle + ticket data
+- `POST /api/resend/{email}` — Resend ticket confirmation email
 - `GET /api/verify/{token}` — Verify ticket signature
 - `POST /api/redeem/{token}` — One-time redemption (sets redeemed=true)
 - `GET /api/public-key` — Public key for client-side WASM verification
 
 **Key design decisions:**
+- Spin and claim are merged into a single atomic operation — no window for users to refresh and respin
+- Attendee names come from Google Sheet (column C), no manual name input needed
 - Prize selection is server-side only; wheel animation is cosmetic (client cannot influence outcome)
 - Stock management uses atomic `UPDATE ... WHERE remaining > 0` with row count check to prevent overselling
 - Email uniqueness enforced at DB level (`UNIQUE` constraint on tickets.email)
@@ -81,11 +83,11 @@ Generate a production key: `openssl rand -hex 32`
 
 ## Database Schema
 
-Two tables: `prizes` (id, name, image_url, total_qty, remaining) and `tickets` (id UUID, email UNIQUE, name, prize_id, token, redeemed, created_at). Prizes are seeded on first run (450 total across 5 prize types).
+Two tables: `prizes` (id, name, image_url, total_qty, remaining) and `tickets` (id UUID, email UNIQUE, name, prize_id, token, redeemed, created_at). Prizes are seeded on first run (460 total across 6 prize types including Mystery Prize).
 
 ## Test Strategy
 
-Tests are bash-based integration tests that spin up a fresh server instance with a clean database. The stress test validates concurrent claim safety (100 simultaneous requests, expects exactly 50 successes matching stock). Core crate has standard Rust unit tests for crypto operations.
+Tests are bash-based integration tests that spin up a fresh server instance with a clean database. Tests override `GOOGLE_SHEET_ID=none` and unset SMTP to avoid external dependencies. The stress test validates concurrent spin safety (100 simultaneous requests, no overselling). The mystery prize test uses `SPINWIN_SMALL_STOCK=1` for reduced stock quantities. Core crate has standard Rust unit tests for crypto operations.
 
 ## Workflow
 

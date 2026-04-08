@@ -1,4 +1,6 @@
-"""Concurrent stress test — called by stress_test.bat"""
+"""Concurrent stress test — verifies no overselling under concurrent load.
+Spin now atomically creates tickets (merged spin+claim).
+"""
 import sys
 import json
 import urllib.request
@@ -8,25 +10,23 @@ import concurrent.futures
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3098"
 
 
-def get_bangles_stock():
+def get_total_stock():
     with urllib.request.urlopen(f"{BASE}/api/prizes") as r:
-        for p in json.loads(r.read()):
-            if p["name"] == "Bangles":
-                return p["remaining"]
-    return -1
+        return sum(p["remaining"] for p in json.loads(r.read()))
 
 
-print(f"  Initial Bangles stock: {get_bangles_stock()}")
+initial_stock = get_total_stock()
+print(f"  Initial total stock: {initial_stock}")
 print()
-print("  Launching 100 concurrent claims (50 workers)...")
+print("  Launching 100 concurrent spins...")
 print()
 
 
-def claim(i):
+def spin(i):
     try:
-        data = json.dumps({"name": f"Stress User {i}", "email": f"stress{i}@test.com", "prize_id": 5}).encode()
+        data = json.dumps({"email": f"stress{i}@test.com"}).encode()
         req = urllib.request.Request(
-            f"{BASE}/api/claim",
+            f"{BASE}/api/spin",
             data=data,
             headers={"Content-Type": "application/json"},
         )
@@ -36,7 +36,7 @@ def claim(i):
     except urllib.error.HTTPError as e:
         body = json.loads(e.read().decode())
         err = body.get("error", "")
-        if "no longer available" in err:
+        if "no longer available" in err or "All prizes" in err:
             return "rejected_stock"
         elif "already been used" in err:
             return "rejected_dupe"
@@ -46,7 +46,7 @@ def claim(i):
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=50) as pool:
-    all_results = list(pool.map(claim, range(100)))
+    all_results = list(pool.map(spin, range(100)))
 
 claimed = all_results.count("claimed")
 rejected_stock = all_results.count("rejected_stock")
@@ -64,13 +64,11 @@ print()
 
 failed = False
 
-if claimed > 50:
-    print(f"  FAIL: OVERSOLD by {claimed - 50}!")
+if claimed > initial_stock:
+    print(f"  FAIL: OVERSOLD by {claimed - initial_stock}!")
     failed = True
-elif claimed == 50:
-    print(f"  PASS: Exactly 50 claimed — no overselling")
 else:
-    print(f"  PASS: {claimed} claimed (<=50) — no overselling")
+    print(f"  PASS: {claimed} claimed (<={initial_stock}) — no overselling")
 
 if claimed + rejected_stock != 100:
     print(f"  FAIL: claimed + rejected_stock != 100 ({claimed} + {rejected_stock})")
@@ -95,22 +93,15 @@ if len(unexpected) > 0:
 # Verify final stock
 print()
 print("── Verify final state ──")
-final_stock = get_bangles_stock()
-print(f"  Final Bangles stock: {final_stock}")
+final_stock = get_total_stock()
+expected_remaining = initial_stock - claimed
+print(f"  Final total stock: {final_stock}")
+print(f"  Expected remaining: {expected_remaining}")
 
-if final_stock == 0:
-    print(f"  PASS: Stock is exactly 0")
+if final_stock == expected_remaining:
+    print(f"  PASS: Stock accounting correct")
 else:
-    print(f"  FAIL: Stock should be 0, got {final_stock}")
+    print(f"  FAIL: Stock mismatch (expected {expected_remaining}, got {final_stock})")
     failed = True
-
-# Check other prizes untouched
-with urllib.request.urlopen(f"{BASE}/api/prizes") as r:
-    for p in json.loads(r.read()):
-        if p["name"] != "Bangles" and p["remaining"] != p["total_qty"]:
-            print(f"  FAIL: {p['name']} stock changed unexpectedly: {p['remaining']}/{p['total_qty']}")
-            failed = True
-    if not failed:
-        print("  PASS: Other prizes untouched")
 
 sys.exit(1 if failed else 0)

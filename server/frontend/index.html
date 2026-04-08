@@ -103,66 +103,6 @@
 
         .email-gate input::placeholder { color: rgba(255,255,255,0.4); }
 
-        /* Modal overlay */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-            padding: 1rem;
-        }
-        .modal-overlay.active { display: flex; }
-
-        .modal {
-            background: linear-gradient(135deg, #2d1b4e, #1a0a2e);
-            border: 1px solid rgba(249, 212, 35, 0.3);
-            border-radius: 1rem;
-            padding: 2rem;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-        }
-
-        .modal h2 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-            color: #f9d423;
-        }
-
-        .prize-image {
-            width: 180px;
-            height: 180px;
-            object-fit: cover;
-            border-radius: 0.5rem;
-            margin: 1rem auto;
-            display: block;
-            border: 2px solid rgba(249, 212, 35, 0.4);
-            background: rgba(255,255,255,0.1);
-        }
-
-        .modal label {
-            display: block;
-            text-align: left;
-            margin: 0.75rem 0 0.25rem;
-            font-size: 0.85rem;
-            color: rgba(255,255,255,0.7);
-        }
-
-        .modal input {
-            width: 100%;
-            padding: 0.7rem 1rem;
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 0.5rem;
-            background: rgba(255,255,255,0.1);
-            color: white;
-            font-size: 1rem;
-        }
-
-        .modal input::placeholder { color: rgba(255,255,255,0.4); }
-
         .claim-btn {
             margin-top: 1.25rem;
             padding: 0.8rem 2rem;
@@ -183,26 +123,61 @@
             margin-top: 0.5rem;
         }
 
-        /* Ticket page */
+        /* Flip card */
         .ticket-container {
             display: none;
             text-align: center;
             padding: 2rem 1rem;
             width: 100%;
+            perspective: 1000px;
         }
 
-        .ticket-card {
+        .flip-card {
+            max-width: 380px;
+            margin: 0 auto;
+            position: relative;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        .flip-card.flipped {
+            transform: rotateY(180deg);
+        }
+
+        .flip-front, .flip-back {
             background: linear-gradient(135deg, #2d1b4e, #1a0a2e);
             border: 2px solid #f9d423;
             border-radius: 1rem;
             padding: 2rem;
-            max-width: 380px;
-            margin: 0 auto;
+            backface-visibility: hidden;
         }
 
-        .ticket-card h2 { color: #f9d423; margin-bottom: 0.5rem; }
-        .ticket-card .prize-label { font-size: 1.3rem; margin: 0.5rem 0; }
-        .ticket-card .attendee-label { color: rgba(255,255,255,0.7); }
+        .flip-front {
+            position: relative;
+        }
+
+        .flip-back {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            transform: rotateY(180deg);
+        }
+
+        .flip-front h2, .flip-back h2 { color: #f9d423; margin-bottom: 0.5rem; }
+
+        .prize-image {
+            width: 180px;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 0.5rem;
+            margin: 1rem auto;
+            display: block;
+            border: 2px solid rgba(249, 212, 35, 0.4);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .flip-back .attendee-label { color: rgba(255,255,255,0.7); }
 
         #ticket-qr {
             margin: 1.5rem auto;
@@ -252,34 +227,31 @@
         <canvas id="wheel-canvas" width="760" height="760"></canvas>
     </div>
 
-    <!-- Claim Modal: only asks for name now -->
-    <div class="modal-overlay" id="claim-modal">
-        <div class="modal">
-            <h2>Congratulations!</h2>
-            <p>You won: <strong id="prize-name-display"></strong></p>
-            <img id="prize-img" class="prize-image" alt="Prize" src="">
-            <p style="font-size:1.05rem; color:rgba(255,255,255,0.7);">Enter your name to claim your prize</p>
-            <label for="claim-name">Full Name</label>
-            <input type="text" id="claim-name" placeholder="Your name" autocomplete="name">
-            <div class="error-msg" id="claim-error"></div>
-            <button class="claim-btn" id="claim-btn">Claim Prize</button>
-        </div>
-    </div>
-
-    <!-- Ticket View -->
+    <!-- Ticket View (flip card) -->
     <div class="ticket-container" id="ticket-view">
-        <div class="ticket-card">
-            <h2>Thank You for Playing!</h2>
-            <p style="margin-bottom: 1rem; color: rgba(255,255,255,0.8);">You won a <strong id="ticket-prize" style="color: #f9d423;"></strong></p>
-            <p class="attendee-label" id="ticket-attendee"></p>
-            <div id="ticket-qr"></div>
-            <p style="color: rgba(255,255,255,0.8); font-size: 1.05rem; margin-top: 1rem; line-height: 1.5;">
-                We'll also send a copy to your email.<br>
-                See you at the Sari Parade!
-            </p>
-            <button class="claim-btn" id="resend-btn" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.15); font-size:0.85rem; padding:0.6rem 1.5rem;">Resend Email</button>
-            <p id="resend-msg" style="color:rgba(255,255,255,0.6); font-size:0.8rem; margin-top:0.5rem;"></p>
-            <p class="ticket-note">Present this QR code at the WomenNowTV booth to collect your prize.<br>Each code is single-use and cannot be shared.</p>
+        <div class="flip-card" id="flip-card">
+            <!-- Front: Prize reveal -->
+            <div class="flip-front">
+                <h2>Congratulations!</h2>
+                <p style="color: rgba(255,255,255,0.8); font-size: 1.15rem; margin-bottom: 0.5rem;">You won a</p>
+                <p style="font-size: 1.5rem; font-weight: 700; color: #f9d423;" id="prize-name-front"></p>
+                <img id="prize-img" class="prize-image" alt="Prize" src="">
+                <button class="claim-btn" id="flip-btn" style="margin-top:1.5rem;">View Your Ticket</button>
+            </div>
+            <!-- Back: QR ticket -->
+            <div class="flip-back">
+                <h2>Your Ticket</h2>
+                <p style="margin-bottom: 0.5rem; color: rgba(255,255,255,0.8);">Prize: <strong id="ticket-prize" style="color: #f9d423;"></strong></p>
+                <p class="attendee-label" id="ticket-attendee"></p>
+                <div id="ticket-qr"></div>
+                <p style="color: rgba(255,255,255,0.8); font-size: 1.05rem; margin-top: 1rem; line-height: 1.5;">
+                    We'll also send a copy to your email.<br>
+                    See you at the Sari Parade!
+                </p>
+                <button class="claim-btn" id="resend-btn" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.15); font-size:0.85rem; padding:0.6rem 1.5rem;">Resend Email</button>
+                <p id="resend-msg" style="color:rgba(255,255,255,0.6); font-size:0.8rem; margin-top:0.5rem;"></p>
+                <p class="ticket-note">Present this QR code at the WomenNowTV booth to collect your prize.<br>Each code is single-use and cannot be shared.</p>
+            </div>
         </div>
     </div>
 
@@ -486,7 +458,7 @@
 
             if (data.already_played) {
                 // Recover existing ticket — show it directly
-                showTicket(data.ticket);
+                showTicket(data.ticket, true);
                 return;
             }
 
@@ -530,7 +502,7 @@
             animateSpin(spinResult.angle, 4000, () => {
                 spinning = false;
                 launchConfetti();
-                showClaimModal(spinResult.prize);
+                showTicket(spinResult);
             });
         } catch (e) {
             alert('Network error — please try again');
@@ -539,68 +511,31 @@
         }
     });
 
-    // Claim modal — only asks for name now (email already captured)
-    function showClaimModal(prize) {
-        document.getElementById('prize-name-display').textContent = prize.name;
-        document.getElementById('prize-img').src = `/assets/${prize.image_url}`;
-        document.getElementById('prize-img').alt = prize.name;
-        document.getElementById('claim-error').textContent = '';
-        document.getElementById('claim-modal').classList.add('active');
-    }
-
-    document.getElementById('claim-btn').addEventListener('click', async () => {
-        const name = document.getElementById('claim-name').value.trim();
-        const errorEl = document.getElementById('claim-error');
-
-        if (!name) {
-            errorEl.textContent = 'Please enter your name';
-            return;
-        }
-
-        document.getElementById('claim-btn').disabled = true;
-        errorEl.textContent = '';
-
-        try {
-            const res = await fetch('/api/claim', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name,
-                    email: verifiedEmail,
-                    prize_id: spinResult.prize.id,
-                }),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                errorEl.textContent = data.error || 'Failed to claim prize';
-                document.getElementById('claim-btn').disabled = false;
-                return;
-            }
-
-            showTicket(data);
-        } catch (e) {
-            errorEl.textContent = 'Network error — please try again';
-            document.getElementById('claim-btn').disabled = false;
-        }
-    });
-
-    function showTicket(data) {
+    function showTicket(data, skipFront) {
         // Hide everything else
-        document.getElementById('claim-modal').classList.remove('active');
-        document.getElementById('claim-modal').style.display = 'none';
         document.querySelector('header').style.display = 'none';
         document.querySelector('.wheel-container').style.display = 'none';
         document.getElementById('spin-btn').style.display = 'none';
         document.getElementById('email-gate').style.display = 'none';
         document.getElementById('confetti').style.display = 'none';
 
-        // Show resend button (useful for recovery)
+        // Populate front (prize reveal)
+        document.getElementById('prize-name-front').textContent = data.prize_name;
+        const prizeImg = document.getElementById('prize-img');
+        if (data.prize && data.prize.image_url) {
+            prizeImg.src = `/assets/${data.prize.image_url}`;
+            prizeImg.alt = data.prize_name;
+        } else {
+            prizeImg.style.display = 'none';
+        }
+
+        // Populate back (ticket)
+        document.getElementById('ticket-prize').textContent = data.prize_name;
+        document.getElementById('ticket-attendee').textContent = data.attendee_name;
+
+        // Resend button
         const resendBtn = document.getElementById('resend-btn');
         resendBtn.style.display = 'inline-block';
-        resendBtn.dataset.email = data.attendee_name ? '' : ''; // reset
-        // Store email for resend — use verifiedEmail if available, otherwise look up from data
         resendBtn.onclick = async () => {
             const email = verifiedEmail || document.getElementById('gate-email').value.trim();
             if (!email) return;
@@ -608,47 +543,48 @@
             const msgEl = document.getElementById('resend-msg');
             try {
                 const res = await fetch(`/api/resend/${encodeURIComponent(email)}`, { method: 'POST' });
-                if (res.ok) {
-                    msgEl.textContent = 'Email sent! Check your inbox.';
-                } else {
-                    msgEl.textContent = 'Failed to resend — please try again.';
-                }
+                msgEl.textContent = res.ok ? 'Email sent! Check your inbox.' : 'Failed to resend — please try again.';
             } catch (e) {
                 msgEl.textContent = 'Network error — please try again.';
             }
             resendBtn.disabled = false;
         };
 
-        // Populate ticket content
-        document.getElementById('ticket-prize').textContent = data.prize_name;
-        document.getElementById('ticket-attendee').textContent = data.attendee_name;
-
-        // Show the ticket view
-        const ticketView = document.getElementById('ticket-view');
-        ticketView.style.display = 'block';
-
         // Generate QR code
         const qrContainer = document.getElementById('ticket-qr');
         qrContainer.innerHTML = '';
-
         if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
             const qrCanvas = document.createElement('canvas');
             QRCode.toCanvas(qrCanvas, data.qr_data, {
-                width: 250,
-                margin: 1,
+                width: 250, margin: 1,
                 color: { dark: '#1a0a2e', light: '#ffffff' },
             }, function(err) {
                 if (err) {
-                    console.error('QR toCanvas error:', err);
                     qrContainer.innerHTML = '<p style="color:#ff6b6b;">QR failed. Ticket: ' + data.ticket_id + '</p>';
                 } else {
                     qrContainer.appendChild(qrCanvas);
                 }
             });
         } else {
-            console.error('QRCode library not available. typeof QRCode:', typeof QRCode);
             qrContainer.innerHTML = '<p style="color:#ff6b6b;">QR library failed to load.<br>Ticket ID: ' + data.ticket_id + '</p>';
         }
+
+        // Show the card
+        const flipCard = document.getElementById('flip-card');
+        const ticketView = document.getElementById('ticket-view');
+        ticketView.style.display = 'block';
+
+        // If recovering an existing ticket, skip to the back directly
+        if (skipFront) {
+            flipCard.classList.add('flipped');
+        } else {
+            flipCard.classList.remove('flipped');
+        }
+
+        // Wire up flip button
+        document.getElementById('flip-btn').onclick = () => {
+            flipCard.classList.add('flipped');
+        };
     }
 
     // Init

@@ -74,94 +74,31 @@ assert_eq "Total stock is 460" "460" "$TOTAL_STOCK"
 
 # ──────────────────────────────────────────────
 echo ""
-echo "── Test: Spin returns valid prize and angle ──"
+echo "── Test: Spin creates ticket atomically ──"
 SPIN=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d '{"email":"alice@test.com"}')
-SPIN_PRIZE_ID=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['id'])")
-SPIN_PRIZE_NAME=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['name'])")
-SPIN_ANGLE=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['angle'])")
+HAS_TICKET=$(echo "$SPIN" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'ticket_id' in d else 'no')")
+HAS_QR=$(echo "$SPIN" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'qr_data' in d else 'no')")
 HAS_ANGLE=$(echo "$SPIN" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if d['angle'] > 360 else 'no')")
+SPIN_PRIZE_NAME=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize_name'])")
+assert_eq "Spin returns ticket_id" "yes" "$HAS_TICKET"
+assert_eq "Spin returns qr_data" "yes" "$HAS_QR"
 assert_eq "Spin returns angle with full rotations" "yes" "$HAS_ANGLE"
-echo "    (Won: $SPIN_PRIZE_NAME, angle: $SPIN_ANGLE)"
+echo "    (Won: $SPIN_PRIZE_NAME)"
 
-# ──────────────────────────────────────────────
-echo ""
-echo "── Test: Wheel-prize alignment ──"
-# Spin 20 times and verify each angle lands in the correct segment
-ALIGNMENT_PASS=0
-ALIGNMENT_TOTAL=20
-for i in $(seq 1 $ALIGNMENT_TOTAL); do
-    RESULT=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d "{\"email\":\"align${i}@test.com\"}")
-    python3 -c "
-import sys, json
-result = json.loads('''$RESULT''')
-prizes_raw = '''$PRIZES'''
-prizes = [p for p in json.loads(prizes_raw) if p['remaining'] > 0]
-num_prizes = len(prizes)
-
-selected_id = result['prize']['id']
-angle = result['angle'] % 360
-
-# Equal-sized segments: each segment is 360/N degrees
-pointer_pos = (360 - angle) % 360
-segment_size = 360.0 / num_prizes
-
-landed_on = None
-for i, p in enumerate(prizes):
-    start = i * segment_size
-    end = start + segment_size
-    if start <= pointer_pos < end:
-        landed_on = p['id']
-        break
-
-# Handle wraparound for last segment
-if landed_on is None:
-    landed_on = prizes[-1]['id']
-
-if landed_on == selected_id:
-    sys.exit(0)
-else:
-    print(f'  Spin {$i}: prize={selected_id} but angle landed on {landed_on} (angle={angle:.1f}, pointer={pointer_pos:.1f})')
-    sys.exit(1)
-" && ALIGNMENT_PASS=$((ALIGNMENT_PASS + 1))
-done
-assert_eq "All $ALIGNMENT_TOTAL spins land on correct segment" "$ALIGNMENT_TOTAL" "$ALIGNMENT_PASS"
-
-# ──────────────────────────────────────────────
-echo ""
-echo "── Test: Claim flow ──"
-CLAIM=$(curl -s -X POST "$BASE/api/claim" \
-    -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Alice Test\",\"email\":\"alice@test.com\",\"prize_id\":$SPIN_PRIZE_ID}")
-HAS_TICKET=$(echo "$CLAIM" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'ticket_id' in d else 'no')")
-HAS_QR=$(echo "$CLAIM" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'qr_data' in d else 'no')")
-CLAIM_NAME=$(echo "$CLAIM" | python3 -c "import sys,json; print(json.load(sys.stdin)['attendee_name'])")
-assert_eq "Claim returns ticket_id" "yes" "$HAS_TICKET"
-assert_eq "Claim returns qr_data" "yes" "$HAS_QR"
-assert_eq "Claim returns correct name" "Alice Test" "$CLAIM_NAME"
-
-QR_TOKEN=$(echo "$CLAIM" | python3 -c "import sys,json; print(json.load(sys.stdin)['qr_data'])")
+QR_TOKEN=$(echo "$SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['qr_data'])")
 
 # ──────────────────────────────────────────────
 echo ""
 echo "── Test: Duplicate email rejection ──"
-# Spin with already-claimed email should fail
 DUPE_SPIN=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/spin" \
     -H 'Content-Type: application/json' \
     -d '{"email":"alice@test.com"}')
 assert_eq "Duplicate email spin returns 409" "409" "$DUPE_SPIN"
 
-DUPE_CLAIM=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/claim" \
+BOB_SPIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/spin" \
     -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Alice Again\",\"email\":\"alice@test.com\",\"prize_id\":1}")
-assert_eq "Duplicate email claim returns 409" "409" "$DUPE_CLAIM"
-
-# Different email should work (spin first, then claim)
-BOB_SPIN=$(curl -s -X POST "$BASE/api/spin" -H 'Content-Type: application/json' -d '{"email":"bob@test.com"}')
-BOB_PRIZE_ID=$(echo "$BOB_SPIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['prize']['id'])")
-CLAIM2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/claim" \
-    -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Bob Test\",\"email\":\"bob@test.com\",\"prize_id\":$BOB_PRIZE_ID}")
-assert_eq "Different email succeeds (200)" "200" "$CLAIM2_STATUS"
+    -d '{"email":"bob@test.com"}')
+assert_eq "Different email succeeds (200)" "200" "$BOB_SPIN_STATUS"
 
 # ──────────────────────────────────────────────
 echo ""

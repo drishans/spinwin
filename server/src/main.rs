@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use spinwin_core::{sign_ticket, verify_ticket, TicketPayload};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -27,7 +27,7 @@ struct AppState {
     db: SqlitePool,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
-    registered_emails: RwLock<HashSet<String>>,
+    registered_emails: RwLock<HashMap<String, String>>,
     smtp: Option<SmtpConfig>,
 }
 
@@ -44,17 +44,6 @@ struct PrizeInfo {
 struct SpinResult {
     prize: PrizeInfo,
     angle: f64,
-}
-
-#[derive(Deserialize)]
-struct ClaimRequest {
-    name: String,
-    email: String,
-    prize_id: i64,
-}
-
-#[derive(Serialize)]
-struct ClaimResponse {
     ticket_id: String,
     qr_data: String,
     prize_name: String,
@@ -109,7 +98,7 @@ async fn get_prizes(State(state): State<Arc<AppState>>) -> Json<Vec<PrizeInfo>> 
     Json(prizes)
 }
 
-async fn fetch_registered_emails(sheet_id: &str) -> Result<HashSet<String>, String> {
+async fn fetch_registered_emails(sheet_id: &str) -> Result<HashMap<String, String>, String> {
     let url = format!(
         "https://docs.google.com/spreadsheets/d/{}/gviz/tq?tqx=out:csv",
         sheet_id
@@ -121,15 +110,19 @@ async fn fetch_registered_emails(sheet_id: &str) -> Result<HashSet<String>, Stri
         .await
         .map_err(|e| format!("Failed to read sheet body: {}", e))?;
 
-    let mut emails = HashSet::new();
+    let mut emails = HashMap::new();
     let mut reader = csv::Reader::from_reader(body.as_bytes());
     for result in reader.records() {
         if let Ok(record) = result {
-            // Column B is index 1
+            // Column B (index 1) = email, Column C (index 2) = name
             if let Some(email) = record.get(1) {
                 let email = email.trim().to_lowercase();
                 if !email.is_empty() && email.contains('@') {
-                    emails.insert(email);
+                    let name = record.get(2)
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or_else(|| email.clone());
+                    emails.insert(email, name);
                 }
             }
         }
@@ -162,14 +155,21 @@ async fn check_email(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let email = email.trim().to_lowercase();
 
-    // Check if email is in the registered list
+    // Check if email is in the registered list and get attendee name
     let registered = state.registered_emails.read().await;
-    if !registered.is_empty() && !registered.contains(&email) {
-        return Ok(Json(serde_json::json!({
-            "already_played": false,
-            "not_registered": true
-        })));
-    }
+    let attendee_name = if !registered.is_empty() {
+        match registered.get(&email) {
+            Some(name) => name.clone(),
+            None => {
+                return Ok(Json(serde_json::json!({
+                    "already_played": false,
+                    "not_registered": true
+                })));
+            }
+        }
+    } else {
+        email.clone()
+    };
     drop(registered);
 
     let existing = sqlx::query("SELECT id, name, token, prize_id FROM tickets WHERE email = ?")
@@ -206,7 +206,8 @@ async fn check_email(
         None => {
             Ok(Json(serde_json::json!({
                 "already_played": false,
-                "not_registered": false
+                "not_registered": false,
+                "attendee_name": attendee_name
             })))
         }
     }
@@ -223,16 +224,23 @@ async fn spin(
 ) -> Result<Json<SpinResult>, (StatusCode, Json<ErrorResponse>)> {
     let email = req.email.trim().to_lowercase();
 
-    // Check if email is registered
+    // Check if email is registered and get attendee name
     let registered = state.registered_emails.read().await;
-    if !registered.is_empty() && !registered.contains(&email) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "This email is not registered for the event".to_string(),
-            }),
-        ));
-    }
+    let attendee_name = if !registered.is_empty() {
+        match registered.get(&email) {
+            Some(name) => name.clone(),
+            None => {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(ErrorResponse {
+                        error: "This email is not registered for the event".to_string(),
+                    }),
+                ));
+            }
+        }
+    } else {
+        email.clone()
+    };
     drop(registered);
 
     // Check if email already used
@@ -307,95 +315,49 @@ async fn spin(
         ));
     }
 
-    // Weighted random selection based on remaining quantities
-    let total_remaining: i64 = prizes.iter().map(|p| p.remaining).sum();
-    let mut rng = rand::thread_rng();
-    let roll = rng.gen_range(0..total_remaining);
+    // Weighted random selection and angle calculation (rng is not Send, so scope it)
+    let (selected, final_angle) = {
+        let total_remaining: i64 = prizes.iter().map(|p| p.remaining).sum();
+        let mut rng = rand::thread_rng();
+        let roll = rng.gen_range(0..total_remaining);
 
-    let mut cumulative = 0i64;
-    let mut selected_idx = 0;
-    for (i, prize) in prizes.iter().enumerate() {
-        cumulative += prize.remaining;
-        if roll < cumulative {
-            selected_idx = i;
-            break;
+        let mut cumulative = 0i64;
+        let mut selected_idx = 0;
+        for (i, prize) in prizes.iter().enumerate() {
+            cumulative += prize.remaining;
+            if roll < cumulative {
+                selected_idx = i;
+                break;
+            }
         }
-    }
 
-    let selected = &prizes[selected_idx];
+        let selected = prizes[selected_idx].clone();
 
-    // Calculate landing angle for the wheel animation.
-    // The wheel uses equal-sized segments (probability is handled server-side).
-    // The pointer is at the top (12 o'clock). When the wheel rotates by R degrees,
-    // the pointer reads the segment at position (360 - R%360) % 360.
-    let num_prizes = prizes.len() as f64;
-    let segment_size = 360.0 / num_prizes;
-    let segment_start = selected_idx as f64 * segment_size;
-    let angle_within_segment = rng.gen_range(0.2..0.8) * segment_size;
-    let landing_angle = 360.0 - (segment_start + angle_within_segment);
+        // Calculate landing angle (equal-sized segments, probability is server-side)
+        let num_prizes = prizes.len() as f64;
+        let segment_size = 360.0 / num_prizes;
+        let segment_start = selected_idx as f64 * segment_size;
+        let angle_within_segment = rng.gen_range(0.2..0.8) * segment_size;
+        let landing_angle = 360.0 - (segment_start + angle_within_segment);
+        let full_rotations = rng.gen_range(5..8) as f64 * 360.0;
 
-    // Add full rotations for visual effect
-    let full_rotations = rng.gen_range(5..8) as f64 * 360.0;
-    let final_angle = full_rotations + landing_angle;
+        (selected, full_rotations + landing_angle)
+    };
 
-    Ok(Json(SpinResult {
-        prize: selected.clone(),
-        angle: final_angle,
-    }))
-}
+    let prize_id = selected.id;
 
-async fn claim(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<ClaimRequest>,
-) -> Result<Json<ClaimResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let email = req.email.trim().to_lowercase();
-    let name = req.name.trim().to_string();
+    // --- Atomically claim the prize (merged spin+claim) ---
 
-    if email.is_empty() || name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Name and email are required".to_string(),
-            }),
-        ));
-    }
-
-    // Check if email already used
-    let existing = sqlx::query("SELECT id FROM tickets WHERE email = ?")
-        .bind(&email)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(db_err)?;
-
-    if existing.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                error: "This email has already been used to claim a prize".to_string(),
-            }),
-        ));
-    }
-
-    // Atomically decrement prize stock
+    // Decrement stock
     let result = sqlx::query("UPDATE prizes SET remaining = remaining - 1 WHERE id = ? AND remaining > 0")
-        .bind(req.prize_id)
+        .bind(prize_id)
         .execute(&state.db)
         .await
         .map_err(db_err)?;
 
     if result.rows_affected() == 0 {
-        // Check if this is Mystery Prize in fallback mode (all other prizes exhausted)
-        let is_mystery: bool = sqlx::query("SELECT name FROM prizes WHERE id = ?")
-            .bind(req.prize_id)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(db_err)?
-            .map(|r| {
-                let name: String = r.get("name");
-                name == "Mystery Prize"
-            })
-            .unwrap_or(false);
-
+        // Check if Mystery Prize in fallback mode
+        let is_mystery = selected.name == "Mystery Prize";
         let others_exhausted: bool = sqlx::query("SELECT COUNT(*) as cnt FROM prizes WHERE name != 'Mystery Prize' AND remaining > 0")
             .fetch_one(&state.db)
             .await
@@ -410,25 +372,17 @@ async fn claim(
                 }),
             ));
         }
-        // Mystery Prize in fallback mode — allow claim without stock decrement
     }
 
-    // Get prize name
-    let prize_row = sqlx::query("SELECT name FROM prizes WHERE id = ?")
-        .bind(req.prize_id)
-        .fetch_one(&state.db)
-        .await
-        .map_err(db_err)?;
-    let prize_name: String = prize_row.get("name");
-
+    let prize_name = selected.name.clone();
     let ticket_id = uuid::Uuid::new_v4().to_string();
 
     let payload = TicketPayload {
         ticket_id: ticket_id.clone(),
         email: email.clone(),
-        name: name.clone(),
+        name: attendee_name.clone(),
         prize_name: prize_name.clone(),
-        prize_id: req.prize_id,
+        prize_id,
     };
 
     let qr_data = sign_ticket(&state.signing_key, &payload);
@@ -439,8 +393,8 @@ async fn claim(
     )
     .bind(&ticket_id)
     .bind(&email)
-    .bind(&name)
-    .bind(req.prize_id)
+    .bind(&attendee_name)
+    .bind(prize_id)
     .bind(&qr_data)
     .execute(&state.db)
     .await;
@@ -448,7 +402,7 @@ async fn claim(
     if let Err(e) = insert_result {
         // Restore prize stock on ticket creation failure
         let _ = sqlx::query("UPDATE prizes SET remaining = remaining + 1 WHERE id = ?")
-            .bind(req.prize_id)
+            .bind(prize_id)
             .execute(&state.db)
             .await;
 
@@ -456,19 +410,19 @@ async fn claim(
             return Err((
                 StatusCode::CONFLICT,
                 Json(ErrorResponse {
-                    error: "This email has already been used to claim a prize".to_string(),
+                    error: "This email has already been used".to_string(),
                 }),
             ));
         }
         return Err(db_err(e));
     }
 
-    // Send ticket email in the background (don't block the response)
+    // Send ticket email in the background
     if let Some(smtp) = &state.smtp {
         let smtp_email = smtp.email.clone();
         let smtp_password = smtp.password.clone();
         let to = email.clone();
-        let aname = name.clone();
+        let aname = attendee_name.clone();
         let pname = prize_name.clone();
         let qr = qr_data.clone();
         tokio::spawn(async move {
@@ -477,11 +431,13 @@ async fn claim(
         });
     }
 
-    Ok(Json(ClaimResponse {
+    Ok(Json(SpinResult {
+        prize: selected.clone(),
+        angle: final_angle,
         ticket_id,
         qr_data,
         prize_name,
-        attendee_name: name,
+        attendee_name,
     }))
 }
 
@@ -676,6 +632,107 @@ async fn resend_ticket(
     }
 }
 
+// ── Admin endpoints ──
+
+async fn admin_stats(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let prizes = sqlx::query("SELECT id, name, total_qty, remaining FROM prizes")
+        .fetch_all(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    let prize_stats: Vec<serde_json::Value> = prizes
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.get::<i64, _>("id"),
+                "name": r.get::<String, _>("name"),
+                "total_qty": r.get::<i64, _>("total_qty"),
+                "remaining": r.get::<i64, _>("remaining"),
+                "claimed": r.get::<i64, _>("total_qty") - r.get::<i64, _>("remaining"),
+            })
+        })
+        .collect();
+
+    let total_tickets: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tickets")
+        .fetch_one(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    let redeemed_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tickets WHERE redeemed = TRUE")
+        .fetch_one(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    let registered = state.registered_emails.read().await;
+    let registered_count = registered.len();
+    drop(registered);
+
+    Ok(Json(serde_json::json!({
+        "prizes": prize_stats,
+        "total_tickets": total_tickets.0,
+        "total_redeemed": redeemed_count.0,
+        "registered_emails": registered_count,
+    })))
+}
+
+#[derive(Deserialize)]
+struct UpdateStockRequest {
+    remaining: i64,
+}
+
+async fn admin_update_stock(
+    State(state): State<Arc<AppState>>,
+    Path(prize_id): Path<i64>,
+    Json(req): Json<UpdateStockRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let result = sqlx::query("UPDATE prizes SET remaining = ? WHERE id = ?")
+        .bind(req.remaining)
+        .bind(prize_id)
+        .execute(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    if result.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "Prize not found".to_string() }),
+        ));
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn admin_tickets(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.email, t.name, t.redeemed, t.created_at, p.name as prize_name
+         FROM tickets t JOIN prizes p ON t.prize_id = p.id
+         ORDER BY t.created_at DESC LIMIT 100"
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
+
+    let tickets: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.get::<String, _>("id"),
+                "email": r.get::<String, _>("email"),
+                "name": r.get::<String, _>("name"),
+                "prize": r.get::<String, _>("prize_name"),
+                "redeemed": r.get::<bool, _>("redeemed"),
+                "created_at": r.get::<String, _>("created_at"),
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "tickets": tickets })))
+}
+
 async fn get_public_key(State(state): State<Arc<AppState>>) -> String {
     URL_SAFE_NO_PAD.encode(state.verifying_key.to_bytes())
 }
@@ -797,12 +854,12 @@ async fn main() {
             }
             Err(e) => {
                 tracing::error!("Failed to load emails from Google Sheet: {}", e);
-                HashSet::new()
+                HashMap::new()
             }
         },
         None => {
             tracing::warn!("No GOOGLE_SHEET_ID set — all emails will be allowed");
-            HashSet::new()
+            HashMap::new()
         }
     };
 
@@ -834,20 +891,27 @@ async fn main() {
     let api = Router::new()
         .route("/api/prizes", get(get_prizes))
         .route("/api/spin", post(spin))
-        .route("/api/claim", post(claim))
         .route("/api/verify/{token}", get(verify_handler))
         .route("/api/redeem/{token}", post(redeem))
         .route("/api/public-key", get(get_public_key))
         .route("/api/check-email/{email}", get(check_email))
         .route("/api/resend/{email}", post(resend_ticket))
+        .route("/api/admin/stats", get(admin_stats))
+        .route("/api/admin/prizes/{id}/stock", post(admin_update_stock))
+        .route("/api/admin/tickets", get(admin_tickets))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
     // Clean URL routes serving HTML files
-    let api = api.route(
-        "/scan",
-        get(|| async { Html(include_str!("../frontend/scan.html")) }),
-    );
+    let api = api
+        .route(
+            "/scan",
+            get(|| async { Html(include_str!("../frontend/scan.html")) }),
+        )
+        .route(
+            "/admin",
+            get(|| async { Html(include_str!("../frontend/admin.html")) }),
+        );
 
     let app = api.fallback_service(ServeDir::new("frontend"));
 

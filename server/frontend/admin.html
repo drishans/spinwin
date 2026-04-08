@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — Spin & Win</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1a0a2e;
+            color: white;
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #f9d423;
+            margin-bottom: 1.5rem;
+        }
+        h2 {
+            font-size: 1.1rem;
+            color: #f9d423;
+            margin: 1.5rem 0 0.75rem;
+        }
+        .stats-bar {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+        .stat {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 0.75rem;
+            padding: 1rem 1.5rem;
+            min-width: 140px;
+            text-align: center;
+        }
+        .stat .number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #f9d423;
+        }
+        .stat .label {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.6);
+            margin-top: 0.25rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+        th, td {
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        th {
+            color: rgba(255,255,255,0.5);
+            font-weight: 500;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+        .stock-bar {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            height: 8px;
+            width: 100px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+        .stock-bar-fill {
+            background: #f9d423;
+            border-radius: 4px;
+            height: 100%;
+            transition: width 0.3s;
+        }
+        .stock-bar-fill.low { background: #ff4e50; }
+        .stock-input {
+            width: 60px;
+            padding: 0.3rem 0.5rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px;
+            color: white;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        .stock-btn {
+            padding: 0.3rem 0.6rem;
+            background: rgba(249, 212, 35, 0.2);
+            border: 1px solid #f9d423;
+            border-radius: 4px;
+            color: #f9d423;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .stock-btn:hover { background: rgba(249, 212, 35, 0.4); }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        .badge-yes { background: rgba(78, 205, 196, 0.2); color: #4ECDC4; }
+        .badge-no { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.4); }
+        .refresh-btn {
+            padding: 0.4rem 1rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.85rem;
+            float: right;
+        }
+        .refresh-btn:hover { background: rgba(255,255,255,0.2); }
+        .msg { color: #4ECDC4; font-size: 0.85rem; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+    <h1>Spin & Win — Admin Dashboard <button class="refresh-btn" onclick="loadAll()">Refresh</button></h1>
+
+    <div class="stats-bar" id="stats-bar"></div>
+
+    <h2>Prize Inventory</h2>
+    <table>
+        <thead>
+            <tr><th>Prize</th><th>Stock</th><th>Claimed</th><th>Adjust</th></tr>
+        </thead>
+        <tbody id="prize-table"></tbody>
+    </table>
+
+    <h2>Recent Tickets (last 100)</h2>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Email</th><th>Prize</th><th>Redeemed</th><th>Time</th></tr>
+        </thead>
+        <tbody id="ticket-table"></tbody>
+    </table>
+
+    <script>
+    async function loadAll() {
+        const [statsRes, ticketsRes] = await Promise.all([
+            fetch('/api/admin/stats'),
+            fetch('/api/admin/tickets'),
+        ]);
+        const stats = await statsRes.json();
+        const ticketData = await ticketsRes.json();
+
+        // Stats bar
+        const totalClaimed = stats.prizes.reduce((s, p) => s + p.claimed, 0);
+        const totalStock = stats.prizes.reduce((s, p) => s + p.total_qty, 0);
+        document.getElementById('stats-bar').innerHTML = `
+            <div class="stat"><div class="number">${stats.total_tickets}</div><div class="label">Tickets Issued</div></div>
+            <div class="stat"><div class="number">${stats.total_redeemed}</div><div class="label">Redeemed</div></div>
+            <div class="stat"><div class="number">${totalStock - totalClaimed}</div><div class="label">Stock Left</div></div>
+            <div class="stat"><div class="number">${stats.registered_emails}</div><div class="label">Registered</div></div>
+        `;
+
+        // Prize table
+        document.getElementById('prize-table').innerHTML = stats.prizes.map(p => {
+            const pct = p.total_qty > 0 ? (p.remaining / p.total_qty * 100) : 0;
+            const low = pct < 20 ? 'low' : '';
+            return `<tr>
+                <td>${p.name}</td>
+                <td>
+                    <span class="stock-bar"><span class="stock-bar-fill ${low}" style="width:${pct}%"></span></span>
+                    ${p.remaining} / ${p.total_qty}
+                </td>
+                <td>${p.claimed}</td>
+                <td>
+                    <input class="stock-input" id="stock-${p.id}" type="number" value="${p.remaining}" min="0">
+                    <button class="stock-btn" onclick="updateStock(${p.id})">Set</button>
+                    <span class="msg" id="msg-${p.id}"></span>
+                </td>
+            </tr>`;
+        }).join('');
+
+        // Ticket table
+        document.getElementById('ticket-table').innerHTML = ticketData.tickets.map(t => {
+            const badge = t.redeemed
+                ? '<span class="badge badge-yes">Yes</span>'
+                : '<span class="badge badge-no">No</span>';
+            const time = t.created_at ? new Date(t.created_at + 'Z').toLocaleString() : '';
+            return `<tr>
+                <td>${t.name}</td>
+                <td>${t.email}</td>
+                <td>${t.prize}</td>
+                <td>${badge}</td>
+                <td>${time}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function updateStock(prizeId) {
+        const input = document.getElementById(`stock-${prizeId}`);
+        const msg = document.getElementById(`msg-${prizeId}`);
+        const val = parseInt(input.value);
+        if (isNaN(val) || val < 0) {
+            msg.textContent = 'Invalid';
+            return;
+        }
+        const res = await fetch(`/api/admin/prizes/${prizeId}/stock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remaining: val }),
+        });
+        if (res.ok) {
+            msg.textContent = 'Updated';
+            setTimeout(() => { msg.textContent = ''; loadAll(); }, 1000);
+        } else {
+            msg.textContent = 'Failed';
+        }
+    }
+
+    loadAll();
+    // Auto-refresh every 30 seconds
+    setInterval(loadAll, 30000);
+    </script>
+</body>
+</html>
