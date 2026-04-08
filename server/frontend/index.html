@@ -232,8 +232,8 @@
         <div class="flip-card" id="flip-card">
             <!-- Front: Prize reveal -->
             <div class="flip-front">
-                <h2>Congratulations!</h2>
-                <p style="color: rgba(255,255,255,0.8); font-size: 1.15rem; margin-bottom: 0.5rem;">You won a</p>
+                <h2>Congratulations, <span id="winner-name"></span>!</h2>
+                <p style="color: rgba(255,255,255,0.8); font-size: 1.15rem; margin-bottom: 0.5rem;">You won:</p>
                 <p style="font-size: 1.5rem; font-weight: 700; color: #f9d423;" id="prize-name-front"></p>
                 <img id="prize-img" class="prize-image" alt="Prize" src="">
                 <button class="claim-btn" id="flip-btn" style="margin-top:1.5rem;">View Your Ticket</button>
@@ -272,6 +272,7 @@
     let spinning = false;
     let spinResult = null;
     let verifiedEmail = null;
+    let verifiedName = null;
 
     const canvas = document.getElementById('wheel-canvas');
     const ctx = canvas.getContext('2d');
@@ -464,6 +465,7 @@
 
             // Email is valid and unused — show spin button
             verifiedEmail = email;
+            verifiedName = data.attendee_name || email;
             document.getElementById('email-gate').style.display = 'none';
             document.getElementById('spin-btn').style.display = 'block';
         } catch (e) {
@@ -520,6 +522,7 @@
         document.getElementById('confetti').style.display = 'none';
 
         // Populate front (prize reveal)
+        document.getElementById('winner-name').textContent = data.attendee_name || verifiedName || '';
         document.getElementById('prize-name-front').textContent = data.prize_name;
         const prizeImg = document.getElementById('prize-img');
         if (data.prize && data.prize.image_url) {
