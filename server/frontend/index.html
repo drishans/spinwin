@@ -39,7 +39,7 @@
 
         header p {
             color: rgba(255,255,255,0.7);
-            font-size: 0.9rem;
+            font-size: 1.1rem;
             margin-top: 0.3rem;
         }
 
@@ -73,7 +73,7 @@
             display: block;
             margin: 1rem auto;
             padding: 1rem 3rem;
-            font-size: 1.3rem;
+            font-size: 1.5rem;
             font-weight: 700;
             border: none;
             border-radius: 50px;
@@ -179,7 +179,7 @@
 
         .error-msg {
             color: #ff6b6b;
-            font-size: 0.85rem;
+            font-size: 1rem;
             margin-top: 0.5rem;
         }
 
@@ -214,7 +214,7 @@
 
         .ticket-note {
             color: rgba(255,255,255,0.5);
-            font-size: 0.8rem;
+            font-size: 0.95rem;
             margin-top: 1rem;
         }
 
@@ -235,11 +235,11 @@
 
     <!-- Email gate: shown before spin, replaced by spin button after verification -->
     <div class="email-gate" id="email-gate">
-        <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 0.5rem;">Enter your registered email to spin</p>
+        <p style="color: rgba(255,255,255,0.7); font-size: 1.1rem; margin-bottom: 0.5rem;">Enter your registered email to spin</p>
         <div style="display:flex; gap:0.5rem; max-width:380px; width:90vw;">
             <input type="email" id="gate-email" placeholder="your@email.com" autocomplete="email"
-                style="flex:1; padding:0.7rem 1rem; border:1px solid rgba(255,255,255,0.2); border-radius:50px; background:rgba(255,255,255,0.1); color:white; font-size:1rem;">
-            <button class="spin-btn" id="gate-btn" style="margin:0; padding:0.7rem 1.5rem; font-size:1rem;">GO</button>
+                style="flex:1; padding:0.8rem 1rem; border:1px solid rgba(255,255,255,0.2); border-radius:50px; background:rgba(255,255,255,0.1); color:white; font-size:1.15rem;">
+            <button class="spin-btn" id="gate-btn" style="margin:0; padding:0.8rem 1.5rem; font-size:1.15rem;">GO</button>
         </div>
         <div class="error-msg" id="gate-error" style="margin-top:0.5rem;"></div>
     </div>
@@ -258,7 +258,7 @@
             <h2>Congratulations!</h2>
             <p>You won: <strong id="prize-name-display"></strong></p>
             <img id="prize-img" class="prize-image" alt="Prize" src="">
-            <p style="font-size:0.85rem; color:rgba(255,255,255,0.7);">Enter your name to claim your prize</p>
+            <p style="font-size:1.05rem; color:rgba(255,255,255,0.7);">Enter your name to claim your prize</p>
             <label for="claim-name">Full Name</label>
             <input type="text" id="claim-name" placeholder="Your name" autocomplete="name">
             <div class="error-msg" id="claim-error"></div>
@@ -273,7 +273,7 @@
             <p style="margin-bottom: 1rem; color: rgba(255,255,255,0.8);">You won a <strong id="ticket-prize" style="color: #f9d423;"></strong></p>
             <p class="attendee-label" id="ticket-attendee"></p>
             <div id="ticket-qr"></div>
-            <p style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-top: 1rem; line-height: 1.5;">
+            <p style="color: rgba(255,255,255,0.8); font-size: 1.05rem; margin-top: 1rem; line-height: 1.5;">
                 We'll also send a copy to your email.<br>
                 See you at the Sari Parade!
             </p>
@@ -361,7 +361,7 @@
             ctx.translate(centerX, centerY);
             ctx.rotate(midAngle);
             ctx.fillStyle = '#1a0a2e';
-            ctx.font = 'bold 22px sans-serif';
+            ctx.font = 'bold 28px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
