@@ -97,17 +97,72 @@ Environment variables are loaded from a `.env` file in the project root via **do
 openssl rand -hex 32
 ```
 
-## Hosting
+## Hosting (Fly.io)
 
-**Recommended: Shuttle.rs** (free tier)
-- Rust-native deployment (`cargo shuttle deploy`)
-- Built-in persistent SQLite storage
-- Custom domains, HTTPS included
-- No Docker/Dockerfile needed
+The app is deployed on [Fly.io](https://fly.io) with two environments:
 
-**Fallback: Fly.io** (free tier)
-- Requires a minimal Dockerfile
-- Persistent volumes for SQLite
+| Environment | Config | URL | Min machines |
+|-------------|--------|-----|-------------|
+| **Production** | `fly.toml` | `https://spinwin.fly.dev` | 1 (always on) |
+| **Staging** | `fly.staging.toml` | `https://spinwin-staging.fly.dev` | 0 (sleeps when idle) |
+
+### First-time setup
+
+```bash
+# Create production app and volume
+fly launch --no-deploy
+fly volumes create spinwin_data --region sjc --size 1
+
+# Create staging app and volume
+fly launch --no-deploy --config fly.staging.toml
+fly volumes create spinwin_staging_data --region sjc --size 1 --app spinwin-staging
+```
+
+### Set secrets
+
+Secrets are set per-app and never stored in config files:
+
+```bash
+# Production
+fly secrets set SPINWIN_SIGNING_KEY="<your-prod-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>"
+
+# Staging
+fly secrets set SPINWIN_SIGNING_KEY="<your-test-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>" --app spinwin-staging
+```
+
+### Deploy
+
+```bash
+# Deploy to production
+fly deploy
+
+# Deploy to staging
+fly deploy --config fly.staging.toml
+```
+
+### Custom domain
+
+```bash
+fly certs add yourdomain.com
+# Then add a CNAME record: yourdomain.com → spinwin.fly.dev
+```
+
+### Useful commands
+
+```bash
+fly logs                          # live production logs
+fly logs --app spinwin-staging    # live staging logs
+fly status                        # machine health
+fly ssh console                   # SSH into the container
+fly secrets list                  # see which secrets are set
+```
+
+### How it works
+
+- **Dockerfile**: Two-stage build — compiles Rust in a full image, copies the binary + frontend into a slim ~80MB runtime image
+- **Persistent volume**: SQLite DB lives at `/data/spinwin.db` on a mounted volume that survives deploys and restarts
+- **HTTPS**: Enforced automatically, free TLS certificate included
+- **Auto-scaling**: Production keeps 1 machine always running (no cold starts). Staging sleeps when idle to save costs
 
 ## Stretch Goals
 
