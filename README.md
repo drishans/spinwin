@@ -103,18 +103,18 @@ The app is deployed on [Fly.io](https://fly.io) with two environments:
 
 | Environment | Config | URL | Min machines |
 |-------------|--------|-----|-------------|
-| **Production** | `fly.toml` | `https://spinwin.fly.dev` | 1 (always on) |
-| **Staging** | `fly.staging.toml` | `https://spinwin-staging.fly.dev` | 0 (sleeps when idle) |
+| **Production** | `fly.toml` | https://spinwin.fly.dev | 1 (always on) |
+| **Staging** | `fly.staging.toml` | https://spinwin-staging.fly.dev | 0 (sleeps when idle) |
 
 ### First-time setup
 
 ```bash
 # Create production app and volume
-fly launch --no-deploy
+fly launch --yes --no-deploy
 fly volumes create spinwin_data --region sjc --size 1
 
 # Create staging app and volume
-fly launch --no-deploy --config fly.staging.toml
+fly launch --yes --no-deploy --config fly.staging.toml --name spinwin-staging
 fly volumes create spinwin_staging_data --region sjc --size 1 --app spinwin-staging
 ```
 
@@ -159,10 +159,11 @@ fly secrets list                  # see which secrets are set
 
 ### How it works
 
-- **Dockerfile**: Two-stage build — compiles Rust in a full image, copies the binary + frontend into a slim ~80MB runtime image
-- **Persistent volume**: SQLite DB lives at `/data/spinwin.db` on a mounted volume that survives deploys and restarts
-- **HTTPS**: Enforced automatically, free TLS certificate included
-- **Auto-scaling**: Production keeps 1 machine always running (no cold starts). Staging sleeps when idle to save costs
+- **Dockerfile**: Two-stage build — compiles Rust in a full image, copies the binary + frontend into a ~32MB runtime image. `Cargo.lock` is included in the build for reproducible builds.
+- **Remote builds**: Fly uses [Depot](https://depot.dev) for remote Docker builds — no local Docker installation needed.
+- **Persistent volume**: SQLite DB lives at `/data/spinwin.db` on a mounted volume that survives deploys and restarts.
+- **HTTPS**: Enforced automatically, free TLS certificate included.
+- **Auto-scaling**: Production keeps 1 machine always running (no cold starts). Staging sleeps when idle to save costs.
 
 ## Stretch Goals
 

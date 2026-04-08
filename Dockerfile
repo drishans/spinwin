@@ -1,13 +1,13 @@
 # Stage 1: Build the Rust binary
-FROM rust:1.83-slim AS builder
+FROM rust:1.86-slim AS builder
 
 WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace manifests first for dependency caching
-COPY Cargo.toml ./
+# Copy workspace manifests and lockfile first for dependency caching
+COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY server/Cargo.toml server/Cargo.toml
 COPY scanner-wasm/Cargo.toml scanner-wasm/Cargo.toml
@@ -21,9 +21,10 @@ RUN mkdir -p core/src server/src scanner-wasm/src && \
 # Build dependencies only (cached unless Cargo.toml changes)
 RUN cargo build --release --package spinwin-server 2>/dev/null || true
 
-# Copy actual source code
+# Copy actual source code and frontend (needed for include_str! at compile time)
 COPY core/ core/
 COPY server/src/ server/src/
+COPY server/frontend/ server/frontend/
 
 # Touch to invalidate cached build of our code (not deps)
 RUN touch core/src/lib.rs server/src/main.rs
