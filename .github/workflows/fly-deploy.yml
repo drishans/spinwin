@@ -6,6 +6,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
     inputs:
       environment:
@@ -18,8 +23,21 @@ on:
           - production
 
 jobs:
+  test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check compile
+        run: cargo check --workspace --all-targets
+      - name: Run core crypto tests
+        run: cargo test -p spinwin-core
+
   deploy-staging:
     name: Deploy to staging
+    needs: test
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     runs-on: ubuntu-latest
     concurrency: deploy-staging
@@ -32,6 +50,7 @@ jobs:
 
   deploy-production:
     name: Deploy to production
+    needs: test
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
     runs-on: ubuntu-latest
     concurrency: deploy-production
