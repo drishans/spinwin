@@ -1,6 +1,6 @@
 # Spin & Win — WomenNowTV Event Giveaway
 
-A prize wheel web app for a live event with 600-700 attendees. Attendees spin a wheel before the event, win a prize, and receive a cryptographically signed QR ticket (displayed on-screen and emailed) they present at the venue to claim it.
+A prize wheel web app for a live event with 600-700 attendees. Attendees spin a wheel before the event, win a prize, and receive a cryptographically signed QR ticket (displayed on-screen and emailed) they present at the venue to claim it. The spin atomically selects a prize, decrements stock, creates the ticket, and sends the confirmation email — no separate claim step, no respin on refresh.
 
 ## Architecture
 
@@ -10,8 +10,9 @@ spinwin/
 ├── server/            # Axum web server: API, SQLite DB, static file serving
 ├── scanner-wasm/      # WASM wrapper around core for staff scanner page
 └── server/frontend/   # Static HTML/CSS/JS frontend
-    ├── index.html     # Attendee: animated wheel → claim form → QR ticket + email
+    ├── index.html     # Attendee: animated wheel → flip card (congrats → QR ticket) + email
     ├── scan.html      # Staff: camera QR scanner → verify → redeem
+    ├── admin.html     # Admin: prize inventory, redemption stats, stock adjustment
     ├── wasm/          # Compiled WASM module (generated, gitignored)
     └── .env           # Environment variables (loaded via dotenvy from project root)
 ```
@@ -38,7 +39,7 @@ The WASM scanner verifies ticket signatures **entirely client-side**. At a venue
 | Threat | Mitigation |
 |--------|------------|
 | Same person spins twice | `UNIQUE(email)` constraint on tickets table |
-| Unregistered attendee | Email validated against a published Google Sheet (column B) before spin is allowed |
+| Unregistered attendee | Email validated against a published Google Sheet (column B) before spin is allowed; attendee name pulled from column C (no manual name input) |
 | Prize overselling | Atomic `UPDATE ... WHERE remaining > 0`, check affected rows |
 | All prizes exhausted | Mystery Prize acts as unlimited fallback when all other prizes run out of stock |
 | Forged QR code | Ed25519 signature — can't produce valid tickets without server's private key |
@@ -87,7 +88,7 @@ tests\windows\run_all.bat
 | `SPINWIN_SIGNING_KEY` | dev key | 64-char hex string (32 bytes) for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection string |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
-| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails are used for registration validation (cached with 5-min refresh) |
+| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails and column C names are used for registration validation (cached as email→name HashMap with 5-min refresh) |
 | `SMTP_EMAIL` | *(none)* | Gmail address for sending QR ticket confirmation emails |
 | `SMTP_PASSWORD` | *(none)* | Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
 | `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small stock quantities (used by mystery prize tests) |
@@ -168,5 +169,5 @@ fly secrets list                  # see which secrets are set
 ## Stretch Goals
 
 - [ ] Apple Wallet `.pkpass` ticket generation (endpoint stubbed)
-- [ ] Admin dashboard showing prize inventory and redemption stats
+- [x] Admin dashboard showing prize inventory, redemption stats, recent tickets, and stock adjustment (`/admin`)
 - [x] Email confirmation with ticket QR attached (Gmail SMTP via `SMTP_EMAIL` / `SMTP_PASSWORD`)
