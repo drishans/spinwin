@@ -480,6 +480,8 @@ async fn send_ticket_email(smtp: &SmtpConfig, to_email: &str, attendee_name: &st
         <p>Present this QR code at the Sari Parade booth to collect your prize:</p>
         <p><img src="cid:ticket-qr" width="250" height="250" alt="QR Ticket" /></p>
         <p style="color:#888;font-size:0.85rem;">Each code is single-use and cannot be shared.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0;" />
+        <p style="color:#888;font-size:0.85rem;">Enjoyed the experience? <a href="https://buymeacoffee.com/drishan" style="color:#7b2d8e;">Buy me a coffee ☕</a></p>
         </div>"#,
         attendee_name, prize_name
     );
