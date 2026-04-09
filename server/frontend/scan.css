@@ -1,0 +1,111 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0a1a;
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    font-size: 1.3rem;
+    padding: 1rem;
+    color: #f9d423;
+}
+
+#scanner-container {
+    width: min(90vw, 400px);
+    aspect-ratio: 1;
+    position: relative;
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.scan-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border: 3px solid transparent;
+    border-radius: 1rem;
+    transition: border-color 0.3s;
+    pointer-events: none;
+}
+
+.scan-overlay.valid { border-color: #4ECDC4; }
+.scan-overlay.invalid { border-color: #FF6B6B; }
+.scan-overlay.redeemed { border-color: #FFD93D; }
+
+#result-panel {
+    width: min(90vw, 400px);
+    margin: 1rem 0;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    display: none;
+}
+
+#result-panel.show { display: block; }
+
+.result-status {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.status-valid { color: #4ECDC4; }
+.status-invalid { color: #FF6B6B; }
+.status-redeemed { color: #FFD93D; }
+
+.result-detail {
+    margin: 0.5rem 0;
+    font-size: 0.95rem;
+}
+
+.result-detail span {
+    color: rgba(255,255,255,0.5);
+}
+
+.redeem-btn {
+    display: block;
+    width: 100%;
+    margin-top: 1.25rem;
+    padding: 1rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 0.5rem;
+    background: #4ECDC4;
+    color: #0a0a1a;
+    cursor: pointer;
+}
+.redeem-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.scan-again-btn {
+    display: block;
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.8rem;
+    font-size: 1rem;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 0.5rem;
+    background: transparent;
+    color: white;
+    cursor: pointer;
+}
+
+#status-line {
+    padding: 0.5rem 1rem;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+}
