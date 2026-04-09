@@ -63,10 +63,10 @@ print("── Test: Prizes are seeded correctly ──")
 prizes = api_get("/api/prizes")
 assert_eq("6 prizes seeded", 6, len(prizes))
 total_stock = sum(p["remaining"] for p in prizes)
-assert_eq("Total stock is 460", 460, total_stock)
+assert_eq("Total stock is 500", 500, total_stock)
 mystery = [p for p in prizes if p["name"] == "Mystery Prize"]
 assert_eq("Mystery Prize exists", 1, len(mystery))
-assert_eq("Mystery Prize initial stock is 10", 10, mystery[0]["remaining"])
+assert_eq("Mystery Prize initial stock is 20", 20, mystery[0]["remaining"])
 
 # ── Spin creates ticket atomically ──
 print()

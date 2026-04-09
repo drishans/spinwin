@@ -91,6 +91,8 @@ tests\windows\run_all.bat
 | `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails and column C names are used for registration validation (cached as email→name HashMap with 5-min refresh) |
 | `SMTP_EMAIL` | *(none)* | Gmail address for sending QR ticket confirmation emails |
 | `SMTP_PASSWORD` | *(none)* | Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
+| `ADMIN_USER` | *(none)* | Username for admin dashboard Basic Auth (at `/admin`) |
+| `ADMIN_PASSWORD` | *(none)* | Password for admin dashboard Basic Auth |
 | `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small stock quantities (used by mystery prize tests) |
 
 Environment variables are loaded from a `.env` file in the project root via **dotenvy**. For production, generate a signing key:
@@ -125,10 +127,10 @@ Secrets are set per-app and never stored in config files:
 
 ```bash
 # Production
-fly secrets set SPINWIN_SIGNING_KEY="<your-prod-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>"
+fly secrets set SPINWIN_SIGNING_KEY="<your-prod-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>" ADMIN_USER="<user>" ADMIN_PASSWORD="<pass>"
 
 # Staging
-fly secrets set SPINWIN_SIGNING_KEY="<your-test-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>" --app spinwin-staging
+fly secrets set SPINWIN_SIGNING_KEY="<your-test-key>" GOOGLE_SHEET_ID="<sheet-id>" SMTP_EMAIL="<gmail>" SMTP_PASSWORD="<app-password>" ADMIN_USER="<user>" ADMIN_PASSWORD="<pass>" --app spinwin-staging
 ```
 
 ### Deploy

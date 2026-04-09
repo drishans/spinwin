@@ -1,7 +1,8 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::{Html, Json},
+    extract::{Path, Request, State},
+    http::{header, StatusCode},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Json, Response},
     routing::{get, post},
     Router,
 };
@@ -23,12 +24,18 @@ struct SmtpConfig {
     password: String,
 }
 
+struct AdminAuth {
+    user: String,
+    password: String,
+}
+
 struct AppState {
     db: SqlitePool,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
     registered_emails: RwLock<HashMap<String, String>>,
     smtp: Option<SmtpConfig>,
+    admin_auth: Option<AdminAuth>,
 }
 
 #[derive(Serialize, Clone)]
@@ -632,6 +639,48 @@ async fn resend_ticket(
     }
 }
 
+// ── Admin auth middleware ──
+
+async fn admin_auth_middleware(
+    State(state): State<Arc<AppState>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let auth = match &state.admin_auth {
+        Some(a) => a,
+        None => {
+            // If no admin creds are configured, deny all admin access
+            return (StatusCode::SERVICE_UNAVAILABLE, "Admin not configured").into_response();
+        }
+    };
+
+    let header_val = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+
+    if let Some(val) = header_val {
+        if let Some(encoded) = val.strip_prefix("Basic ") {
+            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded) {
+                if let Ok(creds) = std::str::from_utf8(&decoded) {
+                    if let Some((user, pass)) = creds.split_once(':') {
+                        if user == auth.user && pass == auth.password {
+                            return next.run(req).await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (
+        StatusCode::UNAUTHORIZED,
+        [(header::WWW_AUTHENTICATE, "Basic realm=\"Admin\"")],
+        "Unauthorized",
+    )
+        .into_response()
+}
+
 // ── Admin endpoints ──
 
 async fn admin_stats(
@@ -679,7 +728,7 @@ async fn admin_stats(
 
 #[derive(Deserialize)]
 struct UpdateStockRequest {
-    remaining: i64,
+    total_qty: i64,
 }
 
 async fn admin_update_stock(
@@ -687,21 +736,51 @@ async fn admin_update_stock(
     Path(prize_id): Path<i64>,
     Json(req): Json<UpdateStockRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let result = sqlx::query("UPDATE prizes SET remaining = ? WHERE id = ?")
-        .bind(req.remaining)
+    // Fetch current values to calculate already-claimed count
+    let row = sqlx::query("SELECT total_qty, remaining FROM prizes WHERE id = ?")
+        .bind(prize_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(db_err)?;
+
+    let row = match row {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "Prize not found".to_string() }),
+            ));
+        }
+    };
+
+    let old_total: i64 = row.get("total_qty");
+    let old_remaining: i64 = row.get("remaining");
+    let claimed = old_total - old_remaining;
+
+    if req.total_qty < 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Total must be non-negative".to_string() }),
+        ));
+    }
+
+    // New remaining = new_total - claimed, floored at 0
+    let new_remaining = (req.total_qty - claimed).max(0);
+
+    sqlx::query("UPDATE prizes SET total_qty = ?, remaining = ? WHERE id = ?")
+        .bind(req.total_qty)
+        .bind(new_remaining)
         .bind(prize_id)
         .execute(&state.db)
         .await
         .map_err(db_err)?;
 
-    if result.rows_affected() == 0 {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "Prize not found".to_string() }),
-        ));
-    }
-
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "total_qty": req.total_qty,
+        "remaining": new_remaining,
+        "claimed": claimed,
+    })))
 }
 
 async fn admin_tickets(
@@ -788,10 +867,10 @@ async fn init_db(pool: &SqlitePool) {
             vec![
                 ("Necklace", "necklace.jpg", 100),
                 ("Ring", "ring.jpg", 200),
-                ("Jewelry Set", "jewelry_set.jpg", 50),
-                ("Earring", "earring.jpg", 50),
+                ("Jewelry Set", "jewelry_set.jpg", 30),
+                ("Earring", "earring.jpg", 100),
                 ("Bangles", "bangles2.jpg", 50),
-                ("Mystery Prize", "mystery.svg", 10),
+                ("Mystery Prize", "mystery.svg", 20),
             ]
         };
         for (name, image, qty) in prizes {
@@ -875,18 +954,46 @@ async fn main() {
         }
     };
 
+    // Admin Basic Auth credentials
+    let admin_auth = match (std::env::var("ADMIN_USER"), std::env::var("ADMIN_PASSWORD")) {
+        (Ok(user), Ok(password)) if !user.is_empty() && !password.is_empty() => {
+            tracing::info!("Admin auth configured for user: {}", user);
+            Some(AdminAuth { user, password })
+        }
+        _ => {
+            tracing::warn!("ADMIN_USER/ADMIN_PASSWORD not set — admin dashboard disabled");
+            None
+        }
+    };
+
     let state = Arc::new(AppState {
         db: pool,
         signing_key,
         verifying_key,
         registered_emails: RwLock::new(initial_emails),
         smtp,
+        admin_auth,
     });
 
     // Start background refresh for registered emails
     if let Some(id) = sheet_id {
         spawn_email_refresh(state.clone(), id);
     }
+
+    // Admin routes — protected by Basic Auth middleware
+    let admin_routes = Router::new()
+        .route("/api/admin/stats", get(admin_stats))
+        .route("/api/admin/prizes/{id}/stock", post(admin_update_stock))
+        .route("/api/admin/tickets", get(admin_tickets))
+        .route(
+            "/admin",
+            get(|| async { Html(include_str!("../frontend/admin.html")) }),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            admin_auth_middleware,
+        ))
+        .with_state(state.clone());
 
     let api = Router::new()
         .route("/api/prizes", get(get_prizes))
@@ -896,22 +1003,15 @@ async fn main() {
         .route("/api/public-key", get(get_public_key))
         .route("/api/check-email/{email}", get(check_email))
         .route("/api/resend/{email}", post(resend_ticket))
-        .route("/api/admin/stats", get(admin_stats))
-        .route("/api/admin/prizes/{id}/stock", post(admin_update_stock))
-        .route("/api/admin/tickets", get(admin_tickets))
         .with_state(state)
+        .merge(admin_routes)
         .layer(CorsLayer::permissive());
 
     // Clean URL routes serving HTML files
-    let api = api
-        .route(
-            "/scan",
-            get(|| async { Html(include_str!("../frontend/scan.html")) }),
-        )
-        .route(
-            "/admin",
-            get(|| async { Html(include_str!("../frontend/admin.html")) }),
-        );
+    let api = api.route(
+        "/scan",
+        get(|| async { Html(include_str!("../frontend/scan.html")) }),
+    );
 
     let app = api.fallback_service(ServeDir::new("frontend"));
 

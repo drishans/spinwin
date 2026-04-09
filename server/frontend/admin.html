@@ -173,8 +173,8 @@
                 </td>
                 <td>${p.claimed}</td>
                 <td>
-                    <input class="stock-input" id="stock-${p.id}" type="number" value="${p.remaining}" min="0">
-                    <button class="stock-btn" onclick="updateStock(${p.id})">Set</button>
+                    <input class="stock-input" id="stock-${p.id}" type="number" value="${p.total_qty}" min="0" title="Total inventory">
+                    <button class="stock-btn" onclick="updateStock(${p.id})">Set Total</button>
                     <span class="msg" id="msg-${p.id}"></span>
                 </td>
             </tr>`;
@@ -207,7 +207,7 @@
         const res = await fetch(`/api/admin/prizes/${prizeId}/stock`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remaining: val }),
+            body: JSON.stringify({ total_qty: val }),
         });
         if (res.ok) {
             msg.textContent = 'Updated';

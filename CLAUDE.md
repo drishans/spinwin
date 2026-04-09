@@ -46,9 +46,12 @@ cd core && cargo test
 | `SPINWIN_SIGNING_KEY` | Dev key | 64-char hex string for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
-| `GOOGLE_SHEET_ID` | *(none)* | Google Sheet ID for registered email validation (publish sheet with "anyone with link") |
+| `GOOGLE_SHEET_ID` | *(none)* | Google Sheet ID for registered email validation (column B = email, column C = name) |
 | `SMTP_EMAIL` | *(none)* | Gmail address for sending ticket emails |
 | `SMTP_PASSWORD` | *(none)* | Gmail app password (requires 2FA enabled) |
+| `ADMIN_USER` | *(none)* | Username for admin dashboard Basic Auth |
+| `ADMIN_PASSWORD` | *(none)* | Password for admin dashboard Basic Auth |
+| `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small quantities (test mode) |
 
 Generate a production key: `openssl rand -hex 32`
 
@@ -68,6 +71,10 @@ Generate a production key: `openssl rand -hex 32`
 - `GET /api/check-email/{email}` — Pre-spin duplicate check + returns attendee name from Google Sheet
 - `POST /api/spin` — Atomic spin+claim: selects prize, decrements stock, creates signed ticket, sends email, returns prize + angle + ticket data
 - `POST /api/resend/{email}` — Resend ticket confirmation email
+- `GET /admin` — Admin dashboard (protected by Basic Auth via `ADMIN_USER`/`ADMIN_PASSWORD`)
+- `GET /api/admin/stats` — Prize inventory + redemption stats (Basic Auth)
+- `POST /api/admin/prizes/{id}/stock` — Adjust prize stock (Basic Auth)
+- `GET /api/admin/tickets` — Recent tickets list (Basic Auth)
 - `GET /api/verify/{token}` — Verify ticket signature
 - `POST /api/redeem/{token}` — One-time redemption (sets redeemed=true)
 - `GET /api/public-key` — Public key for client-side WASM verification
@@ -83,7 +90,7 @@ Generate a production key: `openssl rand -hex 32`
 
 ## Database Schema
 
-Two tables: `prizes` (id, name, image_url, total_qty, remaining) and `tickets` (id UUID, email UNIQUE, name, prize_id, token, redeemed, created_at). Prizes are seeded on first run (460 total across 6 prize types including Mystery Prize).
+Two tables: `prizes` (id, name, image_url, total_qty, remaining) and `tickets` (id UUID, email UNIQUE, name, prize_id, token, redeemed, created_at). Prizes are seeded on first run (500 total across 6 prize types including Mystery Prize as the unlimited fallback).
 
 ## Test Strategy
 

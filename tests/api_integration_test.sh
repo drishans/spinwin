@@ -70,7 +70,7 @@ PRIZES=$(curl -s "$BASE/api/prizes")
 PRIZE_COUNT=$(echo "$PRIZES" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 TOTAL_STOCK=$(echo "$PRIZES" | python3 -c "import sys,json; print(sum(p['remaining'] for p in json.load(sys.stdin)))")
 assert_eq "6 prizes seeded" "6" "$PRIZE_COUNT"
-assert_eq "Total stock is 460" "460" "$TOTAL_STOCK"
+assert_eq "Total stock is 500" "500" "$TOTAL_STOCK"
 
 # ──────────────────────────────────────────────
 echo ""
