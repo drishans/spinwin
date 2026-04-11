@@ -139,7 +139,7 @@ async fn fetch_registered_emails(sheet_id: &str) -> Result<HashMap<String, Strin
 
 fn spawn_email_refresh(state: Arc<AppState>, sheet_id: String) {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(35));
         loop {
             interval.tick().await;
             match fetch_registered_emails(&sheet_id).await {
