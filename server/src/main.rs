@@ -86,7 +86,7 @@ fn db_err(e: sqlx::Error) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 async fn get_prizes(State(state): State<Arc<AppState>>) -> Json<Vec<PrizeInfo>> {
-    let rows = sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes")
+    let rows = sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes ORDER BY id")
         .fetch_all(&state.db)
         .await
         .unwrap_or_default();
@@ -266,13 +266,15 @@ async fn spin(
         ));
     }
 
+    // Fetch ALL prizes — this defines the full wheel layout. Ordered by id so the
+    // segment indices here match the frontend wheel (which also orders by id).
     let rows =
-        sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes WHERE remaining > 0")
+        sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes ORDER BY id")
             .fetch_all(&state.db)
             .await
             .map_err(db_err)?;
 
-    let mut prizes: Vec<PrizeInfo> = rows
+    let all_prizes: Vec<PrizeInfo> = rows
         .iter()
         .map(|r| PrizeInfo {
             id: r.get("id"),
@@ -283,37 +285,7 @@ async fn spin(
         })
         .collect();
 
-    // If only Mystery Prize (or nothing) has stock, fall back to unlimited mystery
-    let non_mystery: Vec<&PrizeInfo> = prizes.iter().filter(|p| p.name != "Mystery Prize").collect();
-    if non_mystery.is_empty() {
-        // Get mystery prize info (even if remaining is 0)
-        let mystery_row = sqlx::query("SELECT id, name, image_url, total_qty, remaining FROM prizes WHERE name = 'Mystery Prize'")
-            .fetch_optional(&state.db)
-            .await
-            .map_err(db_err)?;
-
-        match mystery_row {
-            Some(r) => {
-                prizes = vec![PrizeInfo {
-                    id: r.get("id"),
-                    name: r.get("name"),
-                    image_url: r.get("image_url"),
-                    total_qty: r.get("total_qty"),
-                    remaining: 1, // virtual stock for selection
-                }];
-            }
-            None => {
-                return Err((
-                    StatusCode::GONE,
-                    Json(ErrorResponse {
-                        error: "All prizes have been claimed!".to_string(),
-                    }),
-                ));
-            }
-        }
-    }
-
-    if prizes.is_empty() {
+    if all_prizes.is_empty() {
         return Err((
             StatusCode::GONE,
             Json(ErrorResponse {
@@ -322,26 +294,45 @@ async fn spin(
         ));
     }
 
-    // Weighted random selection and angle calculation (rng is not Send, so scope it)
+    // Pick the winner among in-stock prizes only, then aim the landing angle at that
+    // prize's slot in the FULL wheel. The wheel shows every prize; depleted segments
+    // are simply never landed on. (rng is not Send, so keep it scoped before any await.)
     let (selected, final_angle) = {
-        let total_remaining: i64 = prizes.iter().map(|p| p.remaining).sum();
+        let in_stock: Vec<&PrizeInfo> = all_prizes.iter().filter(|p| p.remaining > 0).collect();
         let mut rng = rand::thread_rng();
-        let roll = rng.gen_range(0..total_remaining);
 
-        let mut cumulative = 0i64;
-        let mut selected_idx = 0;
-        for (i, prize) in prizes.iter().enumerate() {
-            cumulative += prize.remaining;
-            if roll < cumulative {
-                selected_idx = i;
-                break;
+        let selected: PrizeInfo = if !in_stock.is_empty() {
+            // Weighted random by remaining stock (probability stays server-side)
+            let total_remaining: i64 = in_stock.iter().map(|p| p.remaining).sum();
+            let roll = rng.gen_range(0..total_remaining);
+            let mut cumulative = 0i64;
+            let mut chosen = in_stock[0];
+            for p in &in_stock {
+                cumulative += p.remaining;
+                if roll < cumulative {
+                    chosen = p;
+                    break;
+                }
             }
-        }
+            (*chosen).clone()
+        } else {
+            // Everything is out of stock — fall back to the unlimited Mystery Prize
+            match all_prizes.iter().find(|p| p.name == "Mystery Prize") {
+                Some(m) => m.clone(),
+                None => {
+                    return Err((
+                        StatusCode::GONE,
+                        Json(ErrorResponse {
+                            error: "All prizes have been claimed!".to_string(),
+                        }),
+                    ));
+                }
+            }
+        };
 
-        let selected = prizes[selected_idx].clone();
-
-        // Calculate landing angle (equal-sized segments, probability is server-side)
-        let num_prizes = prizes.len() as f64;
+        // Calculate landing angle over the full wheel (equal-sized segments)
+        let selected_idx = all_prizes.iter().position(|p| p.id == selected.id).unwrap_or(0);
+        let num_prizes = all_prizes.len() as f64;
         let segment_size = 360.0 / num_prizes;
         let segment_start = selected_idx as f64 * segment_size;
         let angle_within_segment = rng.gen_range(0.2..0.8) * segment_size;

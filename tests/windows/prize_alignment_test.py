@@ -44,12 +44,14 @@ def assert_eq(desc, expected, actual):
 
 
 def build_segments_equal(prizes):
-    """Equal-sized segments — matches server angle calculation."""
-    available = [p for p in prizes if p["remaining"] > 0]
-    angle = 360 / len(available)
+    """Equal-sized segments over the FULL prize list — matches the server's
+    angle calculation. The wheel shows every prize (sold-out included); the
+    server only lands on in-stock ones, but always within the full layout.
+    /api/prizes returns prizes ordered by id, same as the server's wheel."""
+    angle = 360 / len(prizes)
     return [
         {"id": p["id"], "name": p["name"], "start": i * angle, "sweep": angle}
-        for i, p in enumerate(available)
+        for i, p in enumerate(prizes)
     ]
 
 

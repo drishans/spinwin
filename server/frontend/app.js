@@ -25,15 +25,17 @@ async function loadPrizes() {
 }
 
 function getSegments() {
-    const available = prizes.filter(p => p.remaining > 0);
-    if (available.length === 0) return [];
+    // Show ALL prizes so the wheel always looks full. The server only ever lands
+    // on in-stock prizes; depleted segments are drawn dimmed and never selected.
+    if (prizes.length === 0) return [];
 
     // Equal size segments — probability is handled server-side
-    const angle = 360 / available.length;
-    return available.map((p, i) => ({
+    const angle = 360 / prizes.length;
+    return prizes.map((p, i) => ({
         prize: p,
         startAngle: i * angle,
         sweepAngle: angle,
+        soldOut: p.remaining <= 0,
     }));
 }
 
@@ -54,12 +56,12 @@ function drawWheel(rotation) {
         const endRad = (seg.startAngle + seg.sweepAngle + rotation - 90) * Math.PI / 180;
         const colorIdx = prizes.findIndex(p => p.id === seg.prize.id) % PRIZE_COLORS.length;
 
-        // Draw segment
+        // Draw segment — sold-out prizes use the muted palette so they read as unavailable
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startRad, endRad);
         ctx.closePath();
-        ctx.fillStyle = PRIZE_COLORS[colorIdx];
+        ctx.fillStyle = seg.soldOut ? PRIZE_COLORS_DARK[colorIdx] : PRIZE_COLORS[colorIdx];
         ctx.fill();
         ctx.strokeStyle = '#1a0a2e';
         ctx.lineWidth = 3;
@@ -70,7 +72,7 @@ function drawWheel(rotation) {
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(midAngle);
-        ctx.fillStyle = '#1a0a2e';
+        ctx.fillStyle = seg.soldOut ? 'rgba(26, 10, 46, 0.45)' : '#1a0a2e';
         ctx.font = 'bold 28px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
