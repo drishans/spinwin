@@ -39,7 +39,7 @@ The WASM scanner verifies ticket signatures **entirely client-side**. At a venue
 | Threat | Mitigation |
 |--------|------------|
 | Same person spins twice | `UNIQUE(email)` constraint on tickets table |
-| Unregistered attendee | Email validated against a published Google Sheet (column B) before spin is allowed; attendee name pulled from column C (no manual name input) |
+| Unregistered attendee | Email validated against a published Google Sheet (column B) before spin is allowed; attendee name pulled from column C (no manual name input). Gate is **fail-closed**: whenever `GOOGLE_SHEET_ID` is set, an empty registered-email list (e.g. a failed sheet read) denies all spins rather than opening to everyone |
 | Prize overselling | Atomic `UPDATE ... WHERE remaining > 0`, check affected rows |
 | All prizes exhausted | Mystery Prize acts as unlimited fallback when all other prizes run out of stock |
 | Forged QR code | Ed25519 signature — can't produce valid tickets without server's private key |
@@ -89,7 +89,7 @@ tests\windows\run_all.bat
 | `SPINWIN_SIGNING_KEY` | dev key | 64-char hex string (32 bytes) for Ed25519 signing |
 | `DATABASE_URL` | `sqlite:spinwin.db?mode=rwc` | SQLite connection string |
 | `BIND_ADDR` | `0.0.0.0:3000` | Server bind address |
-| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails and column C names are used for registration validation (cached as email→name HashMap with 5-min refresh) |
+| `GOOGLE_SHEET_ID` | *(none)* | Published Google Sheet ID — column B emails and column C names are used for registration validation (cached as email→name HashMap, refreshed every 35s). Setting this enables the fail-closed registration gate; a 0-email refresh is treated as a probable fetch error and keeps the existing list. Leave unset (or `none`) for dev mode, which allows any email |
 | `SMTP_EMAIL` | *(none)* | Gmail address for sending QR ticket confirmation emails |
 | `SMTP_PASSWORD` | *(none)* | Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
 | `ADMIN_USER` | *(none)* | Username for admin dashboard Basic Auth (at `/admin`) |

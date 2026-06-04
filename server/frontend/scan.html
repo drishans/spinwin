@@ -24,7 +24,8 @@
         <button class="scan-again-btn" id="scan-again-btn">Scan Another</button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <!-- Vendored locally (jsQR 1.4.0) so the scanner works even if the venue blocks CDNs -->
+    <script src="/jsQR.min.js"></script>
     <script type="module" src="/scan.js"></script>
 </body>
 </html>

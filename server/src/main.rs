@@ -34,6 +34,9 @@ struct AppState {
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
     registered_emails: RwLock<HashMap<String, String>>,
+    // True when a Google Sheet is configured. When true, the registration gate is
+    // enforced strictly — an empty list means DENY (fail closed), never allow-all.
+    require_registration: bool,
     smtp: Option<SmtpConfig>,
     admin_auth: Option<AdminAuth>,
 }
@@ -143,6 +146,15 @@ fn spawn_email_refresh(state: Arc<AppState>, sheet_id: String) {
         loop {
             interval.tick().await;
             match fetch_registered_emails(&sheet_id).await {
+                // A successful fetch that yields zero emails almost always means a bad
+                // response (sheet went private → Google serves a login page, transient
+                // error, etc.). Overwriting with empty would silently open the gate to
+                // everyone, so keep the existing list instead.
+                Ok(emails) if emails.is_empty() => {
+                    tracing::warn!(
+                        "Sheet refresh returned 0 emails — keeping existing list (possible fetch error or sharing change)"
+                    );
+                }
                 Ok(emails) => {
                     let count = emails.len();
                     *state.registered_emails.write().await = emails;
@@ -162,9 +174,11 @@ async fn check_email(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let email = email.trim().to_lowercase();
 
-    // Check if email is in the registered list and get attendee name
+    // Check if email is in the registered list and get attendee name.
+    // When a sheet is configured we enforce membership strictly: an empty list
+    // (e.g. a failed sheet read) denies rather than opening the gate to everyone.
     let registered = state.registered_emails.read().await;
-    let attendee_name = if !registered.is_empty() {
+    let attendee_name = if state.require_registration {
         match registered.get(&email) {
             Some(name) => name.clone(),
             None => {
@@ -231,9 +245,11 @@ async fn spin(
 ) -> Result<Json<SpinResult>, (StatusCode, Json<ErrorResponse>)> {
     let email = req.email.trim().to_lowercase();
 
-    // Check if email is registered and get attendee name
+    // Check if email is registered and get attendee name.
+    // When a sheet is configured we enforce membership strictly: an empty list
+    // (e.g. a failed sheet read) denies rather than awarding prizes to everyone.
     let registered = state.registered_emails.read().await;
-    let attendee_name = if !registered.is_empty() {
+    let attendee_name = if state.require_registration {
         match registered.get(&email) {
             Some(name) => name.clone(),
             None => {
@@ -983,11 +999,20 @@ async fn main() {
         }
     };
 
+    // If a sheet is configured, the registration gate is enforced (fail closed).
+    let require_registration = sheet_id.is_some();
+    if require_registration && initial_emails.is_empty() {
+        tracing::warn!(
+            "Registration required but initial email list is empty — spins are denied until the sheet loads"
+        );
+    }
+
     let state = Arc::new(AppState {
         db: pool,
         signing_key,
         verifying_key,
         registered_emails: RwLock::new(initial_emails),
+        require_registration,
         smtp,
         admin_auth,
     });
