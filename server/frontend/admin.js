@@ -28,7 +28,9 @@ async function loadAll() {
             </td>
             <td>${p.claimed}</td>
             <td>
-                <input class="stock-input" id="stock-${p.id}" type="number" value="${p.total_qty}" min="0" title="Total inventory">
+                <input class="stock-input" id="stock-${p.id}" type="number" value="${p.total_qty}"
+                    min="${p.claimed}" data-claimed="${p.claimed}" data-total="${p.total_qty}"
+                    title="Total inventory — minimum ${p.claimed} (already claimed)">
                 <button class="stock-btn" onclick="updateStock(${p.id})">Set Total</button>
                 <span class="msg" id="msg-${p.id}"></span>
             </td>
@@ -55,10 +57,27 @@ async function updateStock(prizeId) {
     const input = document.getElementById(`stock-${prizeId}`);
     const msg = document.getElementById(`msg-${prizeId}`);
     const val = parseInt(input.value);
+    const claimed = parseInt(input.dataset.claimed || '0');
+    const currentTotal = parseInt(input.dataset.total || '0');
+
     if (isNaN(val) || val < 0) {
         msg.textContent = 'Invalid';
         return;
     }
+    // Guard: can't set total below already-issued tickets (server enforces this too)
+    if (val < claimed) {
+        msg.textContent = `Min ${claimed} (already claimed)`;
+        input.value = claimed;
+        return;
+    }
+    // Guard: confirm any reduction so a fat-fingered total isn't applied silently
+    if (val < currentTotal && !confirm(
+        `Reduce total from ${currentTotal} to ${val}?\n` +
+        `Remaining stock will drop to ${val - claimed}.`
+    )) {
+        return;
+    }
+
     const res = await fetch(`/api/admin/prizes/${prizeId}/stock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,7 +87,9 @@ async function updateStock(prizeId) {
         msg.textContent = 'Updated';
         setTimeout(() => { msg.textContent = ''; loadAll(); }, 1000);
     } else {
-        msg.textContent = 'Failed';
+        // Surface the server's reason (e.g. below-claimed rejection)
+        const err = await res.json().catch(() => ({}));
+        msg.textContent = err.error || 'Failed';
     }
 }
 

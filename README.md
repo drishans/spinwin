@@ -45,11 +45,12 @@ The WASM scanner verifies ticket signatures **entirely client-side**. At a venue
 | Forged QR code | Ed25519 signature — can't produce valid tickets without server's private key |
 | Screenshot shared to friend | One-time redemption flag: second scan returns "already redeemed" |
 | Tampered ticket data | Signature verification fails if any payload byte changes |
+| Admin sets stock below tickets already issued | "Set Total" counts `claimed` from the actual tickets table and rejects (HTTP 400) any total below it — setting total == claimed is the supported way to close a prize (remaining → 0); the dashboard mirrors this with a min-claimed input and reduction confirmation |
 | Lost ticket | Ticket recovery: re-entering an existing email re-displays the QR and allows resending the confirmation email |
 
 ## Wheel Design
 
-The wheel displays equal-sized segments for all 6 prizes (including Mystery Prize). Prize selection is handled entirely server-side using weighted random selection based on remaining stock — the wheel animation is cosmetic. The client cannot influence which prize is awarded. Prize images are JPG (except Mystery Prize which uses SVG).
+The wheel always displays equal-sized segments for all 6 prizes (including Mystery Prize); sold-out prizes stay on the wheel but are rendered dimmed. Prize selection is handled entirely server-side using weighted random selection over in-stock prizes only — the wheel animation is cosmetic, and the server aims the landing angle at the winning prize's slot in the full wheel. Both `/api/prizes` and the spin layout are ordered by prize id so the frontend and server agree on which segment is which. The client cannot influence which prize is awarded. Prize images are JPG (except Mystery Prize which uses SVG).
 
 ## Setup
 

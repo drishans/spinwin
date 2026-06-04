@@ -679,10 +679,17 @@ async fn admin_auth_middleware(
 async fn admin_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let prizes = sqlx::query("SELECT id, name, total_qty, remaining FROM prizes")
-        .fetch_all(&state.db)
-        .await
-        .map_err(db_err)?;
+    // claimed comes from a real ticket count, not total - remaining, so the dashboard
+    // stays truthful even if a total was previously set below what was issued.
+    let prizes = sqlx::query(
+        "SELECT p.id, p.name, p.total_qty, p.remaining, COUNT(t.id) AS claimed
+         FROM prizes p LEFT JOIN tickets t ON t.prize_id = p.id
+         GROUP BY p.id, p.name, p.total_qty, p.remaining
+         ORDER BY p.id",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(db_err)?;
 
     let prize_stats: Vec<serde_json::Value> = prizes
         .iter()
@@ -692,7 +699,7 @@ async fn admin_stats(
                 "name": r.get::<String, _>("name"),
                 "total_qty": r.get::<i64, _>("total_qty"),
                 "remaining": r.get::<i64, _>("remaining"),
-                "claimed": r.get::<i64, _>("total_qty") - r.get::<i64, _>("remaining"),
+                "claimed": r.get::<i64, _>("claimed"),
             })
         })
         .collect();
@@ -729,26 +736,28 @@ async fn admin_update_stock(
     Path(prize_id): Path<i64>,
     Json(req): Json<UpdateStockRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    // Fetch current values to calculate already-claimed count
-    let row = sqlx::query("SELECT total_qty, remaining FROM prizes WHERE id = ?")
+    // Confirm the prize exists
+    let exists = sqlx::query("SELECT id FROM prizes WHERE id = ?")
         .bind(prize_id)
         .fetch_optional(&state.db)
         .await
         .map_err(db_err)?;
 
-    let row = match row {
-        Some(r) => r,
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "Prize not found".to_string() }),
-            ));
-        }
-    };
+    if exists.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "Prize not found".to_string() }),
+        ));
+    }
 
-    let old_total: i64 = row.get("total_qty");
-    let old_remaining: i64 = row.get("remaining");
-    let claimed = old_total - old_remaining;
+    // Source of truth for claimed: count actual issued tickets, NOT total - remaining.
+    // (Deriving it lets a too-low total silently corrupt the count and oversell later.)
+    let claimed: i64 = sqlx::query("SELECT COUNT(*) as cnt FROM tickets WHERE prize_id = ?")
+        .bind(prize_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(db_err)?
+        .get("cnt");
 
     if req.total_qty < 0 {
         return Err((
@@ -757,8 +766,23 @@ async fn admin_update_stock(
         ));
     }
 
-    // New remaining = new_total - claimed, floored at 0
-    let new_remaining = (req.total_qty - claimed).max(0);
+    // Safeguard: you can't have a total below the tickets already issued — those
+    // QR codes are out in the wild and still valid. Setting total == claimed is the
+    // way to "close" a prize (remaining drops to 0, no further wins).
+    if req.total_qty < claimed {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!(
+                    "Cannot set total to {} — {} tickets are already issued for this prize. Minimum is {} (set to {} to stop further wins).",
+                    req.total_qty, claimed, claimed, claimed
+                ),
+            }),
+        ));
+    }
+
+    // total_qty >= claimed is now guaranteed, so remaining is non-negative
+    let new_remaining = req.total_qty - claimed;
 
     sqlx::query("UPDATE prizes SET total_qty = ?, remaining = ? WHERE id = ?")
         .bind(req.total_qty)
