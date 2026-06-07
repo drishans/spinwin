@@ -1,17 +1,20 @@
-import init, { verify_ticket_wasm } from '/wasm/spinwin_scanner.js';
-
+let verify_ticket_wasm = null;
 let publicKey = null;
 let wasmReady = false;
 let scanning = true;
 let lastScannedToken = null;
 
 async function setup() {
-    // Load WASM module
+    // Load WASM module (optional). A dynamic import is used so that a missing or
+    // broken WASM build degrades gracefully to server-side verification instead
+    // of crashing the entire module (a static import would abort scan.js on 404).
     try {
-        await init({ module_or_path: '/wasm/spinwin_scanner_bg.wasm' });
+        const wasm = await import('/wasm/spinwin_scanner.js');
+        await wasm.default({ module_or_path: '/wasm/spinwin_scanner_bg.wasm' });
+        verify_ticket_wasm = wasm.verify_ticket_wasm;
         wasmReady = true;
     } catch (e) {
-        console.warn('WASM load failed, falling back to server verification', e);
+        console.warn('WASM unavailable, using server-side verification', e);
     }
 
     // Fetch public key
@@ -81,7 +84,7 @@ async function handleScan(token) {
 
     // Step 1: Client-side signature verification via WASM (instant)
     let localResult = null;
-    if (wasmReady && publicKey) {
+    if (wasmReady && verify_ticket_wasm && publicKey) {
         localResult = verify_ticket_wasm(publicKey, token);
     }
 
