@@ -52,6 +52,7 @@ cd core && cargo test
 | `ADMIN_USER` | *(none)* | Username for admin dashboard Basic Auth |
 | `ADMIN_PASSWORD` | *(none)* | Password for admin dashboard Basic Auth |
 | `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small quantities (test mode) |
+| `SPINWIN_DEMO` | *(none)* | When set to `1`, public preview mode — frontend simulates the spin client-side, `POST /api/spin` returns 403, no stock/tickets/email. See `docs/HOSTING.md` |
 
 Generate a production key: `openssl rand -hex 32`
 
@@ -78,6 +79,7 @@ Generate a production key: `openssl rand -hex 32`
 - `GET /api/verify/{token}` — Verify ticket signature
 - `POST /api/redeem/{token}` — One-time redemption (sets redeemed=true)
 - `GET /api/public-key` — Public key for client-side WASM verification
+- `GET /api/config` — Reports `{"demo": bool}` so the frontend knows whether to run the real flow or the client-side demo
 
 **Key design decisions:**
 - Spin and claim are merged into a single atomic operation — no window for users to refresh and respin

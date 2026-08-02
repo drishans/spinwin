@@ -35,10 +35,13 @@ jobs:
       - name: Run core crypto tests
         run: cargo test -p spinwin-core
 
+  # Manual only. Auto-deploying staging on every push kept a second Fly app
+  # (and its volume) alive year-round for no benefit — start it by hand when
+  # there's actually something to stage.
   deploy-staging:
     name: Deploy to staging
     needs: test
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging'
     runs-on: ubuntu-latest
     concurrency: deploy-staging
     steps:

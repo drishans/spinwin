@@ -95,6 +95,7 @@ tests\windows\run_all.bat
 | `ADMIN_USER` | *(none)* | Username for admin dashboard Basic Auth (at `/admin`) |
 | `ADMIN_PASSWORD` | *(none)* | Password for admin dashboard Basic Auth |
 | `SPINWIN_SMALL_STOCK` | *(none)* | When set to `1`, seeds prizes with small stock quantities (used by mystery prize tests) |
+| `SPINWIN_DEMO` | *(none)* | When set to `1`, runs a public preview: the frontend simulates the spin client-side and `POST /api/spin` returns `403`. No stock consumed, no tickets written, no email sent. See [docs/HOSTING.md](docs/HOSTING.md) |
 
 Environment variables are loaded from a `.env` file in the project root via **dotenvy**. For production, generate a signing key:
 ```bash
@@ -103,12 +104,19 @@ openssl rand -hex 32
 
 ## Hosting (Fly.io)
 
-The app is deployed on [Fly.io](https://fly.io) with two environments:
+The app is deployed on [Fly.io](https://fly.io), plus a free static demo on GitHub Pages:
 
 | Environment | Config | URL | Min machines |
 |-------------|--------|-----|-------------|
-| **Production** | `fly.toml` | https://spinwin.fly.dev | 1 (always on) |
-| **Staging** | `fly.staging.toml` | https://spinwin-staging.fly.dev | 0 (sleeps when idle) |
+| **Production** | `fly.toml` | https://spinwin.fly.dev | 0 — sleeps when idle (set to 1 for the event) |
+| **Staging** | `fly.staging.toml` | https://spinwin-staging.fly.dev | 0 (deploy manually when needed) |
+| **Demo** | `.github/workflows/pages.yml` | GitHub Pages | n/a — static, free |
+
+Between events the production app runs in **demo posture**: scaled to zero, 256MB,
+and `SPINWIN_DEMO=1` so the wheel is simulated in the browser rather than issuing
+real tickets. That takes the running cost from ~$8/month to effectively nothing
+while keeping the URL alive. [docs/HOSTING.md](docs/HOSTING.md) has the full cost
+breakdown and the checklist for switching back to live.
 
 ### First-time setup
 
@@ -167,7 +175,8 @@ fly secrets list                  # see which secrets are set
 - **Remote builds**: Fly uses [Depot](https://depot.dev) for remote Docker builds — no local Docker installation needed.
 - **Persistent volume**: SQLite DB lives at `/data/spinwin.db` on a mounted volume that survives deploys and restarts.
 - **HTTPS**: Enforced automatically, free TLS certificate included.
-- **Auto-scaling**: Production keeps 1 machine always running (no cold starts). Staging sleeps when idle to save costs.
+- **Auto-scaling**: Production currently scales to zero between events and wakes on the first request (~1-2s cold start). Set `min_machines_running = 1` before the event so attendees never wait.
+- **Demo mode**: `server/frontend/demo.js` mirrors the server's weighted prize draw and landing-angle math client-side, so the wheel behaves identically with no backend. The frontend probes `/api/config`; a `demo: true` answer — or no answer at all, as on a static host — switches it on. `?demo=1` / `?demo=0` force either mode.
 
 ## Stretch Goals
 

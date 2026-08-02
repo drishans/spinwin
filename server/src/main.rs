@@ -36,6 +36,10 @@ struct AppState {
     registered_emails: RwLock<HashMap<String, String>>,
     smtp: Option<SmtpConfig>,
     admin_auth: Option<AdminAuth>,
+    /// Read-only preview mode (SPINWIN_DEMO=1). The frontend fakes the whole
+    /// spin client-side so the public URL can stay up between events without
+    /// burning stock; the server refuses to issue real tickets while it's set.
+    demo: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -229,6 +233,17 @@ async fn spin(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SpinRequest>,
 ) -> Result<Json<SpinResult>, (StatusCode, Json<ErrorResponse>)> {
+    // In demo mode the wheel is simulated in the browser. Refuse real spins so a
+    // stray request can't decrement stock or mint a ticket between events.
+    if state.demo {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Demo mode — the live giveaway hasn't started yet.".to_string(),
+            }),
+        ));
+    }
+
     let email = req.email.trim().to_lowercase();
 
     // Check if email is registered and get attendee name
@@ -833,6 +848,12 @@ async fn get_public_key(State(state): State<Arc<AppState>>) -> String {
     URL_SAFE_NO_PAD.encode(state.verifying_key.to_bytes())
 }
 
+/// Tells the frontend whether to run the real flow or the client-side demo.
+/// A static host has no such endpoint, and the frontend treats that as demo too.
+async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "demo": state.demo }))
+}
+
 async fn init_db(pool: &SqlitePool) {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS prizes (
@@ -959,6 +980,12 @@ async fn main() {
         }
     };
 
+    // Demo mode — public preview between events, no real tickets issued
+    let demo = std::env::var("SPINWIN_DEMO").map(|v| v == "1").unwrap_or(false);
+    if demo {
+        tracing::info!("SPINWIN_DEMO=1 — running in demo mode, real spins are disabled");
+    }
+
     // SMTP config for sending ticket emails
     let smtp = match (std::env::var("SMTP_EMAIL"), std::env::var("SMTP_PASSWORD")) {
         (Ok(email), Ok(password)) => {
@@ -990,6 +1017,7 @@ async fn main() {
         registered_emails: RwLock::new(initial_emails),
         smtp,
         admin_auth,
+        demo,
     });
 
     // Start background refresh for registered emails
@@ -1020,6 +1048,7 @@ async fn main() {
         .route("/api/public-key", get(get_public_key))
         .route("/api/check-email/{email}", get(check_email))
         .route("/api/resend/{email}", post(resend_ticket))
+        .route("/api/config", get(get_config))
         .with_state(state)
         .merge(admin_routes)
         .layer(CorsLayer::permissive());

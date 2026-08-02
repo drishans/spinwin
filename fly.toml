@@ -1,3 +1,13 @@
+# Production config — currently in BETWEEN-EVENTS (demo) posture.
+#
+# The app stays reachable at https://spinwin.fly.dev for the blog link, but
+# costs effectively nothing: the machine sleeps when idle and wakes on the first
+# request, and SPINWIN_DEMO=1 makes the frontend simulate the wheel client-side
+# so no stock is consumed and no tickets are issued.
+#
+# To go live for the October event see docs/HOSTING.md — it's three edits here
+# (SPINWIN_DEMO, min_machines_running, memory) plus a deploy.
+
 app = 'spinwin'
 primary_region = 'sjc'
 
@@ -6,13 +16,18 @@ primary_region = 'sjc'
 [env]
   DATABASE_URL = "sqlite:/data/spinwin.db?mode=rwc"
   BIND_ADDR = "0.0.0.0:8080"
+  # Demo posture. Remove this line (and redeploy) to open the real giveaway.
+  SPINWIN_DEMO = "1"
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  # 0 = scale to zero when idle. This is the single biggest cost lever: an
+  # always-on machine bills ~24h/day, a sleeping one bills only while serving.
+  # Set back to 1 before the event so attendees never hit a cold start.
+  min_machines_running = 0
   processes = ['app']
 
 [mounts]
@@ -20,7 +35,9 @@ primary_region = 'sjc'
   destination = "/data"
 
 [[vm]]
-  memory = '1gb'
+  # 256MB is ample for Axum + SQLite (RSS sits well under 50MB) and costs a
+  # fraction of the 1GB the event config used. Bump back to 1gb for the event.
+  memory = '256mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024
+  memory_mb = 256
