@@ -495,9 +495,27 @@ async fn send_ticket_email(smtp: &SmtpConfig, to_email: &str, attendee_name: &st
     let qr_attachment = Attachment::new_inline("ticket-qr".to_string())
         .body(qr_png, ContentType::parse("image/png").unwrap());
 
+    // A bad address must not take down the worker thread. This runs in a
+    // spawned task after the ticket is already committed, so the spin has
+    // succeeded either way — log and give up on the email alone.
+    let from_addr: lettre::message::Mailbox = match smtp.email.parse() {
+        Ok(addr) => addr,
+        Err(e) => {
+            tracing::error!("Invalid SMTP_EMAIL address {:?}: {}", smtp.email, e);
+            return;
+        }
+    };
+    let to_addr: lettre::message::Mailbox = match to_email.parse() {
+        Ok(addr) => addr,
+        Err(e) => {
+            tracing::error!("Invalid recipient address {:?}: {}", to_email, e);
+            return;
+        }
+    };
+
     let email = match Message::builder()
-        .from(smtp.email.parse().unwrap())
-        .to(to_email.parse().unwrap())
+        .from(from_addr)
+        .to(to_addr)
         .subject(format!("Your Spin & Win Prize: {}", prize_name))
         .multipart(
             MultiPart::related()
@@ -959,10 +977,21 @@ async fn main() {
 
     init_db(&pool).await;
 
-    // Load registered emails from Google Sheet
+    // Demo mode — public preview between events, no real tickets issued
+    let demo = std::env::var("SPINWIN_DEMO")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if demo {
+        tracing::info!("SPINWIN_DEMO=1 — running in demo mode, real spins are disabled");
+    }
+
+    // Load registered emails from Google Sheet. Skipped in demo mode: nothing
+    // checks the roster there, and this is a blocking HTTPS round-trip on the
+    // startup path — which a scaled-to-zero app pays on every cold start.
     let sheet_id = std::env::var("GOOGLE_SHEET_ID")
         .ok()
-        .filter(|s| !s.is_empty() && s != "none");
+        .filter(|s| !s.is_empty() && s != "none")
+        .filter(|_| !demo);
     let initial_emails = match &sheet_id {
         Some(id) => match fetch_registered_emails(id).await {
             Ok(emails) => {
@@ -980,15 +1009,11 @@ async fn main() {
         }
     };
 
-    // Demo mode — public preview between events, no real tickets issued
-    let demo = std::env::var("SPINWIN_DEMO").map(|v| v == "1").unwrap_or(false);
-    if demo {
-        tracing::info!("SPINWIN_DEMO=1 — running in demo mode, real spins are disabled");
-    }
-
-    // SMTP config for sending ticket emails
+    // SMTP config for sending ticket emails. An empty value counts as unset —
+    // env::var returns Ok("") for `SMTP_EMAIL=`, which would otherwise read as
+    // configured and panic later when lettre tried to parse "" as an address.
     let smtp = match (std::env::var("SMTP_EMAIL"), std::env::var("SMTP_PASSWORD")) {
-        (Ok(email), Ok(password)) => {
+        (Ok(email), Ok(password)) if !email.is_empty() && !password.is_empty() => {
             tracing::info!("SMTP configured — ticket emails will be sent via {}", email);
             Some(SmtpConfig { email, password })
         }

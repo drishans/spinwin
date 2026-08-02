@@ -22,7 +22,11 @@ primary_region = 'sjc'
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  # 'suspend' snapshots the VM to disk instead of shutting it down: it resumes
+  # in a few hundred ms rather than the ~1-2s a cold start takes, and Fly bills
+  # suspended and stopped machines identically. Requires <=4GB RAM, which 256mb
+  # comfortably satisfies.
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
   # 0 = scale to zero when idle. This is the single biggest cost lever: an
   # always-on machine bills ~24h/day, a sleeping one bills only while serving.
