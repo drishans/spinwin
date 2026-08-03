@@ -19,7 +19,12 @@ const radius = canvas.width / 2 - 20;
 
 // Load prizes
 async function loadPrizes() {
-    const res = await fetch('/api/prizes');
+    if (Demo.active) {
+        prizes = Demo.prizes();
+        drawWheel(0);
+        return;
+    }
+    const res = await fetch('api/prizes');
     prizes = await res.json();
     drawWheel(0);
 }
@@ -186,8 +191,9 @@ document.getElementById('gate-btn').addEventListener('click', async () => {
     errorEl.textContent = '';
 
     try {
-        const res = await fetch(`/api/check-email/${encodeURIComponent(email)}`);
-        const data = await res.json();
+        const data = Demo.active
+            ? Demo.checkEmail(email)
+            : await (await fetch(`api/check-email/${encodeURIComponent(email)}`)).json();
 
         if (data.not_registered) {
             errorEl.textContent = 'This email is not registered for the event';
@@ -224,20 +230,24 @@ document.getElementById('spin-btn').addEventListener('click', async () => {
     document.getElementById('spin-btn').disabled = true;
 
     try {
-        const res = await fetch('/api/spin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: verifiedEmail }),
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            alert(err.error || 'Failed to spin');
-            spinning = false;
-            document.getElementById('spin-btn').disabled = false;
-            return;
-        }
+        if (Demo.active) {
+            spinResult = Demo.spin(verifiedEmail);
+        } else {
+            const res = await fetch('api/spin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: verifiedEmail }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(err.error || 'Failed to spin');
+                spinning = false;
+                document.getElementById('spin-btn').disabled = false;
+                return;
+            }
 
-        spinResult = await res.json();
+            spinResult = await res.json();
+        }
 
         animateSpin(spinResult.angle, 4000, () => {
             spinning = false;
@@ -264,7 +274,7 @@ function showTicket(data, skipFront) {
     document.getElementById('prize-name-front').textContent = data.prize_name;
     const prizeImg = document.getElementById('prize-img');
     if (data.prize && data.prize.image_url) {
-        prizeImg.src = `/assets/${data.prize.image_url}`;
+        prizeImg.src = `assets/${data.prize.image_url}`;
         prizeImg.alt = data.prize_name;
     } else {
         prizeImg.style.display = 'none';
@@ -274,24 +284,40 @@ function showTicket(data, skipFront) {
     document.getElementById('ticket-prize').textContent = data.prize_name;
     document.getElementById('ticket-attendee').textContent = data.attendee_name;
 
-    // Resend button
+    // Resend button — no mail is sent in demo mode, so don't offer it
     const resendBtn = document.getElementById('resend-btn');
-    resendBtn.style.display = 'inline-block';
-    resendBtn.onclick = async () => {
-        const email = verifiedEmail || document.getElementById('gate-email').value.trim();
-        if (!email) return;
-        resendBtn.disabled = true;
-        const msgEl = document.getElementById('resend-msg');
-        try {
-            const res = await fetch(`/api/resend/${encodeURIComponent(email)}`, { method: 'POST' });
-            msgEl.textContent = res.ok ? 'Email sent! Check your inbox.' : 'Failed to resend — please try again.';
-        } catch (e) {
-            msgEl.textContent = 'Network error — please try again.';
+    if (Demo.active) {
+        resendBtn.style.display = 'none';
+        const emailNote = document.getElementById('email-note');
+        if (emailNote) {
+            emailNote.innerHTML = 'In the live giveaway this ticket also lands in your inbox.<br>See you at the Sari Parade!';
         }
-        resendBtn.disabled = false;
-    };
+        const ticketNote = document.querySelector('.ticket-note');
+        if (ticketNote) {
+            ticketNote.innerHTML = 'Demo ticket — this QR is not signed and will not scan as valid.<br>Real tickets are single-use and cannot be shared.';
+        }
+    } else {
+        resendBtn.style.display = 'inline-block';
+        resendBtn.onclick = async () => {
+            const email = verifiedEmail || document.getElementById('gate-email').value.trim();
+            if (!email) return;
+            resendBtn.disabled = true;
+            const msgEl = document.getElementById('resend-msg');
+            try {
+                const res = await fetch(`api/resend/${encodeURIComponent(email)}`, { method: 'POST' });
+                msgEl.textContent = res.ok ? 'Email sent! Check your inbox.' : 'Failed to resend — please try again.';
+            } catch (e) {
+                msgEl.textContent = 'Network error — please try again.';
+            }
+            resendBtn.disabled = false;
+        };
+    }
 
-    // Generate QR code
+    renderTicketQr(data);
+    revealTicket(skipFront);
+}
+
+function renderTicketQr(data) {
     const qrContainer = document.getElementById('ticket-qr');
     qrContainer.innerHTML = '';
     if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
@@ -309,11 +335,11 @@ function showTicket(data, skipFront) {
     } else {
         qrContainer.innerHTML = '<p style="color:#ff6b6b;">QR library failed to load.<br>Ticket ID: ' + data.ticket_id + '</p>';
     }
+}
 
-    // Show the card
+function revealTicket(skipFront) {
     const flipCard = document.getElementById('flip-card');
-    const ticketView = document.getElementById('ticket-view');
-    ticketView.style.display = 'block';
+    document.getElementById('ticket-view').style.display = 'block';
 
     // If recovering an existing ticket, skip to the back directly
     if (skipFront) {
@@ -322,11 +348,15 @@ function showTicket(data, skipFront) {
         flipCard.classList.remove('flipped');
     }
 
-    // Wire up flip button
     document.getElementById('flip-btn').onclick = () => {
         flipCard.classList.add('flipped');
     };
 }
 
-// Init
-loadPrizes();
+// Init — decide demo vs live before drawing anything
+(async () => {
+    if (await Demo.detect()) {
+        Demo.showBanner();
+    }
+    loadPrizes();
+})();

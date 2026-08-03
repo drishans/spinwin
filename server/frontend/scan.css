@@ -109,3 +109,19 @@ video {
     color: rgba(255,255,255,0.5);
     font-size: 0.85rem;
 }
+
+/* Demo-mode banner — shown when the scanner has no live backend to verify against */
+.demo-banner {
+    position: sticky;
+    top: 0;
+    z-index: 300;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(90deg, #f9d423, #ff8c42);
+    color: #1a0a2e;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+}

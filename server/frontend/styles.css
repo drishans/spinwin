@@ -192,3 +192,19 @@ canvas {
     pointer-events: none;
     z-index: 200;
 }
+
+/* Demo-mode banner — shown when the page runs without a live backend */
+.demo-banner {
+    position: sticky;
+    top: 0;
+    z-index: 300;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(90deg, #f9d423, #ff8c42);
+    color: #1a0a2e;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+}

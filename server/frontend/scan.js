@@ -5,12 +5,22 @@ let scanning = true;
 let lastScannedToken = null;
 
 async function setup() {
+    // The scanner verifies real signatures against the server's key, so it has
+    // nothing to do without a backend. Say so instead of opening the camera on
+    // a page that could never validate a ticket.
+    if (await Demo.detect()) {
+        Demo.showBanner('Demo preview — the staff scanner needs the live server, so verification is switched off here.');
+        document.getElementById('status-line').textContent =
+            'Scanner unavailable in demo mode. It runs at the venue against the live server.';
+        return;
+    }
+
     // Load WASM module (optional). A dynamic import is used so that a missing or
     // broken WASM build degrades gracefully to server-side verification instead
     // of crashing the entire module (a static import would abort scan.js on 404).
     try {
-        const wasm = await import('/wasm/spinwin_scanner.js');
-        await wasm.default({ module_or_path: '/wasm/spinwin_scanner_bg.wasm' });
+        const wasm = await import('./wasm/spinwin_scanner.js');
+        await wasm.default({ module_or_path: './wasm/spinwin_scanner_bg.wasm' });
         verify_ticket_wasm = wasm.verify_ticket_wasm;
         wasmReady = true;
     } catch (e) {
@@ -19,7 +29,7 @@ async function setup() {
 
     // Fetch public key
     try {
-        const res = await fetch('/api/public-key');
+        const res = await fetch('api/public-key');
         publicKey = await res.text();
     } catch (e) {
         console.error('Failed to fetch public key', e);
@@ -96,7 +106,7 @@ async function handleScan(token) {
 
     // Step 2: Server verification (checks redemption status)
     try {
-        const res = await fetch(`/api/verify/${encodeURIComponent(token)}`);
+        const res = await fetch(`api/verify/${encodeURIComponent(token)}`);
         const serverResult = await res.json();
 
         if (!serverResult.valid) {
@@ -168,7 +178,7 @@ document.getElementById('redeem-btn').addEventListener('click', async () => {
     btn.textContent = 'Redeeming...';
 
     try {
-        const res = await fetch(`/api/redeem/${encodeURIComponent(lastScannedToken)}`, {
+        const res = await fetch(`api/redeem/${encodeURIComponent(lastScannedToken)}`, {
             method: 'POST',
         });
         const data = await res.json();

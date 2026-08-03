@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spin & Win — WomenNowTV</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header>
@@ -49,7 +49,7 @@
                 <p style="margin-bottom: 0.5rem; color: rgba(255,255,255,0.8);">Prize: <strong id="ticket-prize" style="color: #f9d423;"></strong></p>
                 <p class="attendee-label" id="ticket-attendee"></p>
                 <div id="ticket-qr"></div>
-                <p style="color: rgba(255,255,255,0.8); font-size: 1.05rem; margin-top: 1rem; line-height: 1.5;">
+                <p id="email-note" style="color: rgba(255,255,255,0.8); font-size: 1.05rem; margin-top: 1rem; line-height: 1.5;">
                     We'll also send a copy to your email.<br>
                     See you at the Sari Parade!
                 </p>
@@ -62,7 +62,8 @@
 
     <canvas class="confetti-canvas" id="confetti"></canvas>
 
-    <script src="/qrcode.min.js"></script>
-    <script src="/app.js"></script>
+    <script src="qrcode.min.js"></script>
+    <script src="demo.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
